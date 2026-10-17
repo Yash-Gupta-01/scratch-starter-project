@@ -252,7 +252,7 @@ export function createExecutionEngine(dispatch, stateRef) {
     }); // wake, don't orphan
     sleepers.clear();
     activeRunners.clear();
-    dispatch({ type: "RESET_SPRITES" });
+    dispatch({ type: "SET_RUNNING", isRunning: false });
   };
 
   return { start, stop };

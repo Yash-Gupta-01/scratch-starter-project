@@ -64,15 +64,17 @@ export default function PreviewArea() {
             <span>Stop</span>
           </button>
 
-          {/* Reset Button (shows up after run when sprites have moved, disappears on click) */}
+          {/* Reset Button (shows up when sprites have moved, disappears on reset) */}
           {!isRunning && hasMoved && (
             <button
               type="button"
+              aria-label="Reset stage"
               title="Reset Sprites to Starting Positions"
               onClick={() => dispatch({ type: "RESET_SPRITES" })}
-              className="flex items-center gap-1.5 px-3 py-1.5 rounded font-bold text-xs text-blue-800 bg-blue-100 hover:bg-blue-200 border border-blue-300 shadow cursor-pointer transition-colors"
+              style={{ minHeight: 32 }}
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded font-bold text-xs text-white bg-blue-600 hover:bg-blue-700 shadow cursor-pointer transition-colors"
             >
-              <Icon name="undo" size={12} className="fill-current text-blue-800" />
+              <Icon name="undo" size={12} className="fill-current text-white" />
               <span>Reset</span>
             </button>
           )}
