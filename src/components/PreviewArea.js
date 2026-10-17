@@ -18,40 +18,6 @@ export default function PreviewArea() {
     engine.stop();
   };
 
-  const handleLoadHeroDemo = () => {
-    if (isRunning) return;
-    // Step 1: Clear scripts
-    dispatch({ type: "CLEAR_SCRIPT", spriteId: "sprite-1" });
-    dispatch({ type: "CLEAR_SCRIPT", spriteId: "sprite-2" });
-
-    // Step 2: Cat gets Repeat 10 [Move 10]
-    const catRepeatNum = state.nextBlockNum;
-    dispatch({ type: "ADD_BLOCK", spriteId: "sprite-1", blockType: "REPEAT" });
-    dispatch({
-      type: "ADD_CHILD_BLOCK",
-      spriteId: "sprite-1",
-      parentBlockId: `blk-${catRepeatNum}`,
-      blockType: "MOVE",
-    });
-
-    // Step 3: Horse gets Repeat 10 [Move -10]
-    const horseRepeatNum = catRepeatNum + 2;
-    const horseMoveNum = catRepeatNum + 3;
-    dispatch({ type: "ADD_BLOCK", spriteId: "sprite-2", blockType: "REPEAT" });
-    dispatch({
-      type: "ADD_CHILD_BLOCK",
-      spriteId: "sprite-2",
-      parentBlockId: `blk-${horseRepeatNum}`,
-      blockType: "MOVE",
-    });
-    dispatch({
-      type: "UPDATE_BLOCK_PARAMS",
-      spriteId: "sprite-2",
-      blockId: `blk-${horseMoveNum}`,
-      params: { steps: -10 },
-    });
-  };
-
   const spritesList = Object.values(state.sprites);
 
   return (
@@ -92,17 +58,6 @@ export default function PreviewArea() {
           </button>
         </div>
 
-        {/* Quick Hero Setup Button */}
-        {!isRunning && (
-          <button
-            type="button"
-            title="Auto-load Cat [Move 10] and Horse [Move -10] collision demo"
-            onClick={handleLoadHeroDemo}
-            className="text-xs text-purple-700 bg-purple-100 hover:bg-purple-200 border border-purple-300 font-semibold px-2.5 py-1 rounded transition-colors cursor-pointer"
-          >
-            ⚡ Load Hero Demo
-          </button>
-        )}
       </div>
 
       {/* Stage Canvas (Strict inline styles per AGENTS §10) */}

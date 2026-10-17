@@ -89,13 +89,27 @@ export default function BlockItem({ block, index, spriteId, isChild = false }) {
     });
   };
 
-  const isMotion = ["MOVE", "TURN_CW", "TURN_CCW", "GOTO"].includes(block.type);
   const isLooks = ["SAY", "THINK"].includes(block.type);
   const isControl = block.type === "REPEAT";
 
   let colorClasses = "bg-blue-500 text-white";
   if (isLooks) colorClasses = "bg-purple-500 text-white";
   if (isControl) colorClasses = "bg-yellow-500 text-black";
+
+  const renderParamInput = (field, defaultValue, isWide = false) => (
+    <input
+      type="text"
+      disabled={isRunning}
+      value={p[field] ?? defaultValue}
+      onMouseDown={(e) => e.stopPropagation()}
+      onChange={(e) => handleParamChange(field, e.target.value)}
+      className={
+        isWide
+          ? "bg-white text-black rounded-full px-2 w-24 text-center font-bold text-xs"
+          : "bg-white text-black rounded-full px-2 w-14 text-center font-bold text-xs"
+      }
+    />
+  );
 
   return (
     <div
@@ -116,14 +130,7 @@ export default function BlockItem({ block, index, spriteId, isChild = false }) {
         {block.type === "MOVE" && (
           <>
             <span>Move</span>
-            <input
-              type="text"
-              disabled={isRunning}
-              value={p.steps ?? 10}
-              onMouseDown={(e) => e.stopPropagation()}
-              onChange={(e) => handleParamChange("steps", e.target.value)}
-              className="bg-white text-black rounded-full px-2 w-14 text-center font-bold text-xs"
-            />
+            {renderParamInput("steps", 10)}
             <span>steps</span>
           </>
         )}
@@ -131,14 +138,7 @@ export default function BlockItem({ block, index, spriteId, isChild = false }) {
         {block.type === "TURN_CW" && (
           <>
             <span>Turn ↻</span>
-            <input
-              type="text"
-              disabled={isRunning}
-              value={p.degrees ?? 15}
-              onMouseDown={(e) => e.stopPropagation()}
-              onChange={(e) => handleParamChange("degrees", e.target.value)}
-              className="bg-white text-black rounded-full px-2 w-14 text-center font-bold text-xs"
-            />
+            {renderParamInput("degrees", 15)}
             <span>degrees</span>
           </>
         )}
@@ -146,14 +146,7 @@ export default function BlockItem({ block, index, spriteId, isChild = false }) {
         {block.type === "TURN_CCW" && (
           <>
             <span>Turn ↺</span>
-            <input
-              type="text"
-              disabled={isRunning}
-              value={p.degrees ?? 15}
-              onMouseDown={(e) => e.stopPropagation()}
-              onChange={(e) => handleParamChange("degrees", e.target.value)}
-              className="bg-white text-black rounded-full px-2 w-14 text-center font-bold text-xs"
-            />
+            {renderParamInput("degrees", 15)}
             <span>degrees</span>
           </>
         )}
@@ -161,46 +154,18 @@ export default function BlockItem({ block, index, spriteId, isChild = false }) {
         {block.type === "GOTO" && (
           <>
             <span>Go to x:</span>
-            <input
-              type="text"
-              disabled={isRunning}
-              value={p.x ?? 0}
-              onMouseDown={(e) => e.stopPropagation()}
-              onChange={(e) => handleParamChange("x", e.target.value)}
-              className="bg-white text-black rounded-full px-2 w-14 text-center font-bold text-xs"
-            />
+            {renderParamInput("x", 0)}
             <span>y:</span>
-            <input
-              type="text"
-              disabled={isRunning}
-              value={p.y ?? 0}
-              onMouseDown={(e) => e.stopPropagation()}
-              onChange={(e) => handleParamChange("y", e.target.value)}
-              className="bg-white text-black rounded-full px-2 w-14 text-center font-bold text-xs"
-            />
+            {renderParamInput("y", 0)}
           </>
         )}
 
         {block.type === "SAY" && (
           <>
             <span>Say</span>
-            <input
-              type="text"
-              disabled={isRunning}
-              value={p.text ?? "Hello!"}
-              onMouseDown={(e) => e.stopPropagation()}
-              onChange={(e) => handleParamChange("text", e.target.value)}
-              className="bg-white text-black rounded-full px-2 w-24 text-center font-bold text-xs"
-            />
+            {renderParamInput("text", "Hello!", true)}
             <span>for</span>
-            <input
-              type="text"
-              disabled={isRunning}
-              value={p.duration ?? 2}
-              onMouseDown={(e) => e.stopPropagation()}
-              onChange={(e) => handleParamChange("duration", e.target.value)}
-              className="bg-white text-black rounded-full px-2 w-14 text-center font-bold text-xs"
-            />
+            {renderParamInput("duration", 2)}
             <span>secs</span>
           </>
         )}
@@ -208,23 +173,9 @@ export default function BlockItem({ block, index, spriteId, isChild = false }) {
         {block.type === "THINK" && (
           <>
             <span>Think</span>
-            <input
-              type="text"
-              disabled={isRunning}
-              value={p.text ?? "Hmm..."}
-              onMouseDown={(e) => e.stopPropagation()}
-              onChange={(e) => handleParamChange("text", e.target.value)}
-              className="bg-white text-black rounded-full px-2 w-24 text-center font-bold text-xs"
-            />
+            {renderParamInput("text", "Hmm...", true)}
             <span>for</span>
-            <input
-              type="text"
-              disabled={isRunning}
-              value={p.duration ?? 2}
-              onMouseDown={(e) => e.stopPropagation()}
-              onChange={(e) => handleParamChange("duration", e.target.value)}
-              className="bg-white text-black rounded-full px-2 w-14 text-center font-bold text-xs"
-            />
+            {renderParamInput("duration", 2)}
             <span>secs</span>
           </>
         )}
@@ -232,14 +183,7 @@ export default function BlockItem({ block, index, spriteId, isChild = false }) {
         {block.type === "REPEAT" && (
           <>
             <span>Repeat</span>
-            <input
-              type="text"
-              disabled={isRunning}
-              value={p.repeatCount ?? 10}
-              onMouseDown={(e) => e.stopPropagation()}
-              onChange={(e) => handleParamChange("repeatCount", e.target.value)}
-              className="bg-white text-black rounded-full px-2 w-14 text-center font-bold text-xs"
-            />
+            {renderParamInput("repeatCount", 10)}
             <span>times</span>
           </>
         )}
