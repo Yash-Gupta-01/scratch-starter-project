@@ -18,15 +18,15 @@ export default function App() {
               Visual Coding Playground
             </span>
           </div>
-          <div className="flex items-center space-x-2 text-xs text-purple-200">
+          <div className="flex items-center space-x-2 text-xs text-purple-100">
             <span className="bg-purple-700 px-2.5 py-1 rounded-full font-semibold text-white">
               React 17 + FP
             </span>
           </div>
         </header>
 
-        {/* Main Work Area */}
-        <div className="flex-1 flex flex-row overflow-hidden p-2 gap-2">
+        {/* Main Work Area Landmark */}
+        <main className="flex-1 flex flex-row overflow-hidden p-2 gap-2">
           {/* Left + Mid: Sidebar Palette & Workspace */}
           <div className="flex-1 flex flex-row bg-white border border-gray-200 rounded-xl overflow-hidden shadow-sm">
             <Sidebar />
@@ -40,7 +40,7 @@ export default function App() {
           >
             <PreviewArea />
           </div>
-        </div>
+        </main>
       </div>
     </ScratchProvider>
   );

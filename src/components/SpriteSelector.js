@@ -79,10 +79,10 @@ export default function SpriteSelector() {
                 <p className="text-xs font-extrabold text-gray-800 truncate">
                   {sprite.name}
                 </p>
-                <p style={{ fontSize: 10 }} className="text-gray-500 font-mono">
+                <p style={{ fontSize: 10 }} className="text-gray-700 font-mono font-medium">
                   x: {Math.round(sprite.x)}, y: {Math.round(sprite.y)}
                 </p>
-                <p style={{ fontSize: 10 }} className="text-gray-400">
+                <p style={{ fontSize: 10 }} className="text-gray-600 font-medium">
                   {sprite.script.length} {sprite.script.length === 1 ? "block" : "blocks"}
                 </p>
               </div>
@@ -93,7 +93,7 @@ export default function SpriteSelector() {
                   type="button"
                   title={`Delete ${sprite.name}`}
                   onClick={(e) => handleDeleteSprite(e, sprite.id)}
-                  className="absolute top-1 right-1 text-gray-400 hover:text-red-500 p-1 rounded hover:bg-red-50 transition-colors"
+                  className="absolute top-1 right-1 text-gray-600 hover:text-red-600 p-1 rounded hover:bg-red-50 transition-colors"
                 >
                   <Icon name="times" size={10} className="fill-current" />
                 </button>

@@ -257,7 +257,7 @@ export default function BlockItem({ block, index, spriteId, isChild = false }) {
           disabled={isRunning}
           onClick={handleRemove}
           title="Delete block"
-          className="ml-auto p-1 text-xs opacity-75 hover:opacity-100 disabled:opacity-30"
+          className="ml-auto p-1 text-xs opacity-90 hover:opacity-100 disabled:opacity-30"
         >
           <Icon name="trash" size={12} className="fill-current" />
         </button>
@@ -286,7 +286,7 @@ export default function BlockItem({ block, index, spriteId, isChild = false }) {
                 />
               ))
             ) : (
-              <div className="text-xs text-yellow-800 italic py-1 text-center select-none">
+              <div className="text-xs text-yellow-900 font-medium italic py-1 text-center select-none">
                 Drop block inside Repeat
               </div>
             )}
