@@ -19,6 +19,13 @@ export default function PreviewArea() {
   };
 
   const spritesList = Object.values(state.sprites);
+  const hasMoved = spritesList.some(
+    (s) =>
+      s.x !== s.initialX ||
+      s.y !== s.initialY ||
+      s.angle !== s.initialAngle ||
+      s.speech !== null
+  );
 
   return (
     <div className="flex-1 h-full flex flex-col p-3 bg-gray-50 overflow-y-auto">
@@ -44,7 +51,7 @@ export default function PreviewArea() {
           {/* Red Stop */}
           <button
             type="button"
-            title="Stop & Reset"
+            title="Stop Execution"
             onClick={handleStop}
             disabled={!isRunning}
             className={`flex items-center gap-1.5 px-3 py-1.5 rounded font-bold text-xs text-white shadow ${
@@ -56,6 +63,19 @@ export default function PreviewArea() {
             <Icon name="stop" size={13} className="fill-current text-white" />
             <span>Stop</span>
           </button>
+
+          {/* Reset Button (shows up after run when sprites have moved, disappears on click) */}
+          {!isRunning && hasMoved && (
+            <button
+              type="button"
+              title="Reset Sprites to Starting Positions"
+              onClick={() => dispatch({ type: "RESET_SPRITES" })}
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded font-bold text-xs text-blue-800 bg-blue-100 hover:bg-blue-200 border border-blue-300 shadow cursor-pointer transition-colors"
+            >
+              <Icon name="undo" size={12} className="fill-current text-blue-800" />
+              <span>Reset</span>
+            </button>
+          )}
         </div>
 
       </div>
