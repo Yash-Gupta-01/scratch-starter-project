@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useReducer, useRef, useLayoutEffect } from "react";
+import React, { createContext, useContext, useReducer, useRef, useLayoutEffect, useCallback } from "react";
 import { createExecutionEngine } from "../engine/runner";
 
 /**
@@ -341,13 +341,18 @@ export function ScratchProvider({ children }) {
     stateRef.current = state;
   }, [state]);
 
+  const customDispatch = useCallback((action) => {
+    stateRef.current = reducer(stateRef.current, action);
+    dispatch(action);
+  }, []);
+
   const engineRef = useRef(null);
   if (engineRef.current === null) {
-    engineRef.current = createExecutionEngine(dispatch, stateRef);
+    engineRef.current = createExecutionEngine(customDispatch, stateRef);
   }
 
   return (
-    <ScratchContext.Provider value={{ state, dispatch, engine: engineRef.current }}>
+    <ScratchContext.Provider value={{ state, dispatch: customDispatch, engine: engineRef.current }}>
       {children}
     </ScratchContext.Provider>
   );

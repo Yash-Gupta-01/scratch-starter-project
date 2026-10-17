@@ -82,14 +82,34 @@ export function createExecutionEngine(dispatch, stateRef) {
         const s = sprite(id);
         if (!s) return;
         const r = (s.angle * Math.PI) / 180;
-        const st = num(p.steps);
-        dispatch({
-          type: "UPDATE_SPRITE",
-          spriteId: id,
-          changes: { x: s.x + st * Math.cos(r), y: s.y - st * Math.sin(r) },
-        });
-        checkCollisions();
-        await sleep(TICK_MS, abort);
+        const totalSteps = num(p.steps);
+        const sign = Math.sign(totalSteps) || 1;
+        const absSteps = Math.abs(totalSteps);
+        const STEP_CHUNK = 10;
+
+        let rem = absSteps;
+        if (rem === 0) {
+          checkCollisions();
+          await sleep(TICK_MS, abort);
+          break;
+        }
+
+        while (rem > 0) {
+          abort();
+          const chunk = Math.min(STEP_CHUNK, rem);
+          const cur = sprite(id);
+          if (!cur) return;
+          const nextX = cur.x + (chunk * sign) * Math.cos(r);
+          const nextY = cur.y - (chunk * sign) * Math.sin(r);
+          dispatch({
+            type: "UPDATE_SPRITE",
+            spriteId: id,
+            changes: { x: nextX, y: nextY },
+          });
+          checkCollisions();
+          rem -= chunk;
+          await sleep(rem > 0 ? Math.min(TICK_MS, 25) : TICK_MS, abort);
+        }
         break;
       }
 
