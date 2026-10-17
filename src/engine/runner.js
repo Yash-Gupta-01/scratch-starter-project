@@ -1,274 +1,239 @@
-export const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+const ABORT_CANCEL = Symbol("ABORT_CANCEL"); // Stop pressed -> leave runner
+const ABORT_RESTART = Symbol("ABORT_RESTART"); // scripts swapped -> restart from block 0
+const num = (v) => Number(v) || 0;
+const pairKey = (a, b) => (a < b ? a + '|' + b : b + '|' + a);
 
-export async function cancellableSleep(ms, cancelRef, spriteId, scriptVersion, stateRef) {
-  const step = 50;
-  let elapsed = 0;
-  while (elapsed < ms) {
-    if (cancelRef.current) {
-      throw new Error("ABORT_CANCEL");
-    }
-    const currentSprite = stateRef.current?.sprites?.[spriteId];
-    if (currentSprite && currentSprite.scriptVersion !== scriptVersion) {
-      throw new Error("ABORT_SWAP");
-    }
-    await sleep(Math.min(step, ms - elapsed));
-    elapsed += step;
-  }
-}
+const TICK_MS = 150;
+const POLL_MS = 50;
+const COLLIDE_PX = 55;
+const COOLDOWN_MS = 700;
 
-export async function executeBlock(
-  spriteId,
-  block,
-  dispatch,
-  cancelRef,
-  stateRef,
-  scriptVersion
-) {
-  if (cancelRef.current) throw new Error("ABORT_CANCEL");
-  const currentSprite = stateRef.current?.sprites?.[spriteId];
-  if (currentSprite && currentSprite.scriptVersion !== scriptVersion) {
-    throw new Error("ABORT_SWAP");
-  }
+const isColliding = (a, b) =>
+  Math.abs(a.x - b.x) < COLLIDE_PX && Math.abs(a.y - b.y) < COLLIDE_PX;
 
-  switch (block.type) {
-    case "MOVE": {
-      const sprite = stateRef.current.sprites[spriteId];
-      if (!sprite) return;
-      const steps = Number(block.params.steps ?? 10);
-      const rad = (sprite.angle * Math.PI) / 180;
-      const dx = steps * Math.cos(rad);
-      const dy = -steps * Math.sin(rad); // Scratch +y is UP
+export function createExecutionEngine(dispatch, stateRef) {
+  let cancelled = false;
+  let engineRunning = false;
+  const activeRunners = new Set(); // spriteIds with a live runner
+  const sleepers = new Set(); // { timeoutId, resolve }
+  const wasColliding = new Map(); // pairKey -> bool
+  const lastSwapAt = new Map(); // pairKey -> ms
+  const sprite = (id) => stateRef.current.sprites[id];
 
-      const newX = Math.max(-210, Math.min(210, Math.round(sprite.x + dx)));
-      const newY = Math.max(-150, Math.min(150, Math.round(sprite.y + dy)));
+  // sleep that stop() can wake; caller re-checks abort right after it resolves
+  const sleep = (ms, abort) =>
+    new Promise((resolve) => {
+      const end = Date.now() + ms;
+      const tick = () => {
+        if (cancelled || Date.now() >= end) return resolve();
+        const entry = { resolve };
+        entry.timeoutId = setTimeout(() => {
+          sleepers.delete(entry);
+          tick();
+        }, Math.min(POLL_MS, end - Date.now()));
+        sleepers.add(entry);
+      };
+      tick();
+    }).then(() => abort());
 
-      dispatch({
-        type: "UPDATE_SPRITE",
-        spriteId,
-        changes: { x: newX, y: newY },
-      });
-      await cancellableSleep(150, cancelRef, spriteId, scriptVersion, stateRef);
-      break;
-    }
+  // called SYNCHRONOUSLY after every MOVE / GOTO dispatch. No rAF anywhere.
+  const checkCollisions = () => {
+    const list = Object.values(stateRef.current.sprites);
+    for (let i = 0; i < list.length; i++) {
+      for (let j = i + 1; j < list.length; j++) {
+        const a = list[i];
+        const b = list[j];
+        const key = pairKey(a.id, b.id);
+        const now = isColliding(a, b);
+        const was = wasColliding.get(key) || false;
+        const cooled = Date.now() - (lastSwapAt.get(key) || 0) >= COOLDOWN_MS;
 
-    case "TURN_CW": {
-      const sprite = stateRef.current.sprites[spriteId];
-      if (!sprite) return;
-      const deg = Number(block.params.degrees ?? 15);
-      const newAngle = (sprite.angle + deg) % 360;
-
-      dispatch({
-        type: "UPDATE_SPRITE",
-        spriteId,
-        changes: { angle: newAngle },
-      });
-      await cancellableSleep(150, cancelRef, spriteId, scriptVersion, stateRef);
-      break;
-    }
-
-    case "TURN_CCW": {
-      const sprite = stateRef.current.sprites[spriteId];
-      if (!sprite) return;
-      const deg = Number(block.params.degrees ?? 15);
-      const newAngle = (sprite.angle - deg) % 360;
-
-      dispatch({
-        type: "UPDATE_SPRITE",
-        spriteId,
-        changes: { angle: newAngle },
-      });
-      await cancellableSleep(150, cancelRef, spriteId, scriptVersion, stateRef);
-      break;
-    }
-
-    case "GOTO": {
-      const targetX = Number(block.params.x ?? 0);
-      const targetY = Number(block.params.y ?? 0);
-      const newX = Math.max(-210, Math.min(210, targetX));
-      const newY = Math.max(-150, Math.min(150, targetY));
-
-      dispatch({
-        type: "UPDATE_SPRITE",
-        spriteId,
-        changes: { x: newX, y: newY },
-      });
-      await cancellableSleep(150, cancelRef, spriteId, scriptVersion, stateRef);
-      break;
-    }
-
-    case "SAY":
-    case "THINK": {
-      const text = block.params.text ?? (block.type === "SAY" ? "Hello!" : "Hmm...");
-      const duration = Number(block.params.duration ?? 2);
-      const type = block.type === "SAY" ? "say" : "think";
-
-      try {
-        dispatch({
-          type: "UPDATE_SPRITE",
-          spriteId,
-          changes: { speech: { text, type } },
-        });
-        await cancellableSleep(duration * 1000, cancelRef, spriteId, scriptVersion, stateRef);
-      } finally {
-        dispatch({
-          type: "UPDATE_SPRITE",
-          spriteId,
-          changes: { speech: null },
-        });
-      }
-      break;
-    }
-
-    case "REPEAT": {
-      const count = Math.max(1, Number(block.params.repeatCount ?? 10));
-      const children = block.children || [];
-
-      for (let i = 0; i < count; i++) {
-        if (cancelRef.current) throw new Error("ABORT_CANCEL");
-
-        if (children.length === 0) {
-          // Empty loop guard: avoid locking the JavaScript thread
-          await cancellableSleep(50, cancelRef, spriteId, scriptVersion, stateRef);
-        } else {
-          for (const child of children) {
-            await executeBlock(spriteId, child, dispatch, cancelRef, stateRef, scriptVersion);
-          }
+        if (now && !was && cooled) {
+          lastSwapAt.set(key, Date.now());
+          dispatch({ type: "SWAP_SCRIPTS", spriteA: a.id, spriteB: b.id });
+          [a.id, b.id].forEach((id) => {
+            if (!activeRunners.has(id)) runSprite(id); // revive
+          });
         }
+        wasColliding.set(key, now);
       }
-      break;
-    }
-
-    default:
-      break;
-  }
-}
-
-export function createExecutionEngine(dispatch, cancelRef, stateRef) {
-  const activeRunners = new Set();
-  let rafId = null;
-  let wasColliding = false;
-  let lastSwapTimestamp = 0;
-
-  const checkCompletion = () => {
-    if (activeRunners.size === 0 && !cancelRef.current) {
-      dispatch({ type: "SET_RUNNING", isRunning: false });
-      stopCollisionLoop();
     }
   };
 
-  const runSprite = async (spriteId) => {
-    activeRunners.add(spriteId);
+  const seedCollisionState = () => {
+    // so pre-overlapping sprites don't swap at t=0
+    wasColliding.clear();
+    lastSwapAt.clear();
+    const list = Object.values(stateRef.current.sprites);
+    for (let i = 0; i < list.length; i++) {
+      for (let j = i + 1; j < list.length; j++) {
+        wasColliding.set(
+          pairKey(list[i].id, list[j].id),
+          isColliding(list[i], list[j])
+        );
+      }
+    }
+  };
 
-    try {
-      while (!cancelRef.current) {
-        const sprite = stateRef.current.sprites[spriteId];
-        if (!sprite || !sprite.script || sprite.script.length === 0) {
-          break;
-        }
+  const execBlock = async (id, block, abort) => {
+    const p = block.params || {};
+    switch (block.type) {
+      case "MOVE": {
+        const s = sprite(id);
+        if (!s) return;
+        const r = (s.angle * Math.PI) / 180;
+        const st = num(p.steps);
+        dispatch({
+          type: "UPDATE_SPRITE",
+          spriteId: id,
+          changes: { x: s.x + st * Math.cos(r), y: s.y - st * Math.sin(r) },
+        });
+        checkCollisions();
+        await sleep(TICK_MS, abort);
+        break;
+      }
 
-        const scriptVersion = sprite.scriptVersion;
+      case "TURN_CW": {
+        const s = sprite(id);
+        if (!s) return;
+        dispatch({
+          type: "UPDATE_SPRITE",
+          spriteId: id,
+          changes: { angle: s.angle + num(p.degrees) },
+        });
+        await sleep(TICK_MS, abort);
+        break;
+      }
 
-        try {
-          for (const block of sprite.script) {
-            await executeBlock(
-              spriteId,
-              block,
-              dispatch,
-              cancelRef,
-              stateRef,
-              scriptVersion
-            );
-          }
-          // Script completed normally without swap interruption
-          break;
-        } catch (err) {
-          if (err.message === "ABORT_SWAP") {
-            // Version mismatch detected due to collision swap -> restart newly assigned script from block 0
+      case "TURN_CCW": {
+        const s = sprite(id);
+        if (!s) return;
+        dispatch({
+          type: "UPDATE_SPRITE",
+          spriteId: id,
+          changes: { angle: s.angle - num(p.degrees) },
+        });
+        await sleep(TICK_MS, abort);
+        break;
+      }
+
+      case "GOTO": {
+        dispatch({
+          type: "UPDATE_SPRITE",
+          spriteId: id,
+          changes: { x: num(p.x), y: num(p.y) },
+        });
+        checkCollisions();
+        await sleep(TICK_MS, abort);
+        break;
+      }
+
+      case "REPEAT": {
+        const n = Math.max(0, Math.floor(num(p.repeatCount)));
+        const children = block.children || [];
+        for (let i = 0; i < n; i++) {
+          abort();
+          if (!children.length) {
+            await sleep(POLL_MS, abort); // empty loop can't starve
             continue;
           }
-          // ABORT_CANCEL or other error
-          break;
+          for (const c of children) {
+            abort();
+            await execBlock(id, c, abort);
+          }
+        }
+        break;
+      }
+
+      case "SAY":
+      case "THINK": {
+        dispatch({
+          type: "UPDATE_SPRITE",
+          spriteId: id,
+          changes: {
+            speech: {
+              text: String(p.text ?? ""),
+              type: block.type === "SAY" ? "say" : "think",
+            },
+          },
+        });
+        try {
+          await sleep(num(p.duration) * 1000, abort);
+        } finally {
+          dispatch({
+            type: "UPDATE_SPRITE",
+            spriteId: id,
+            changes: { speech: null },
+          });
+        }
+        break;
+      }
+
+      default:
+        break;
+    }
+  };
+
+  const maybeFinish = () => {
+    if (engineRunning && activeRunners.size === 0) {
+      engineRunning = false;
+      dispatch({ type: "SET_RUNNING", isRunning: false });
+    }
+  };
+
+  async function runSprite(id) {
+    activeRunners.add(id); // idempotent: covers pre-registration AND revival
+    try {
+      while (true) {
+        // one iteration per scriptVersion
+        const s = sprite(id);
+        if (cancelled || !s) return;
+        const version = s.scriptVersion;
+        const abort = () => {
+          if (cancelled || !sprite(id)) throw ABORT_CANCEL;
+          if (sprite(id).scriptVersion !== version) throw ABORT_RESTART;
+        };
+
+        try {
+          for (const b of s.script) {
+            abort();
+            await execBlock(id, b, abort);
+          }
+          return;
+        } catch (e) {
+          if (e === ABORT_RESTART) continue;
+          if (e === ABORT_CANCEL) return;
+          throw e;
         }
       }
     } finally {
-      activeRunners.delete(spriteId);
-      checkCompletion();
+      activeRunners.delete(id);
+      maybeFinish();
     }
-  };
-
-  const startCollisionLoop = () => {
-    const loop = () => {
-      if (cancelRef.current) return;
-
-      const s1 = stateRef.current.sprites["sprite-1"];
-      const s2 = stateRef.current.sprites["sprite-2"];
-
-      if (s1 && s2) {
-        // Continuous unrotated AABB collision check
-        const isColliding = Math.abs(s1.x - s2.x) < 55 && Math.abs(s1.y - s2.y) < 55;
-
-        // Edge-triggered swap on false -> true transition with 700ms cooldown backstop
-        if (isColliding && !wasColliding && Date.now() - lastSwapTimestamp > 700) {
-          wasColliding = true;
-          lastSwapTimestamp = Date.now();
-
-          // Dispatch atomic script swap in central state
-          dispatch({
-            type: "SWAP_SCRIPTS",
-            spriteA: "sprite-1",
-            spriteB: "sprite-2",
-          });
-
-          // Revive any swapped sprite whose previous script had already finished
-          ["sprite-1", "sprite-2"].forEach((id) => {
-            if (!activeRunners.has(id)) {
-              runSprite(id);
-            }
-          });
-        } else if (!isColliding) {
-          // Reset edge trigger when sprites separate
-          wasColliding = false;
-        }
-      }
-
-      rafId = requestAnimationFrame(loop);
-    };
-
-    rafId = requestAnimationFrame(loop);
-  };
-
-  const stopCollisionLoop = () => {
-    if (rafId) {
-      cancelAnimationFrame(rafId);
-      rafId = null;
-    }
-  };
+  }
 
   const start = () => {
-    cancelRef.current = false;
+    if (engineRunning) return;
+    cancelled = false;
+    engineRunning = true;
+    seedCollisionState();
     dispatch({ type: "SET_RUNNING", isRunning: true });
-    activeRunners.clear();
-    wasColliding = false;
-    lastSwapTimestamp = 0;
-
-    // Launch runner for each sprite
-    const spriteIds = Object.keys(stateRef.current.sprites);
-    spriteIds.forEach((id) => {
-      runSprite(id);
-    });
-
-    startCollisionLoop();
+    const ids = Object.keys(stateRef.current.sprites);
+    ids.forEach((id) => activeRunners.add(id)); // pre-register BEFORE any runner can finish
+    ids.forEach((id) => runSprite(id));
   };
 
   const stop = () => {
-    cancelRef.current = true;
-    stopCollisionLoop();
+    cancelled = true;
+    engineRunning = false;
+    sleepers.forEach(({ timeoutId, resolve }) => {
+      clearTimeout(timeoutId);
+      resolve();
+    }); // wake, don't orphan
+    sleepers.clear();
     activeRunners.clear();
     dispatch({ type: "RESET_SPRITES" });
   };
 
-  return {
-    start,
-    stop,
-  };
+  return { start, stop };
 }

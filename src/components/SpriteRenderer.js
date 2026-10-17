@@ -1,73 +1,108 @@
 import React from "react";
 import CatSprite from "./CatSprite";
 import HorseSprite from "./HorseSprite";
+import { STAGE_W, STAGE_H, SPRITE_W, SPRITE_H } from "../state/ScratchContext";
 
-const STAGE_W = 480;
-const STAGE_H = 360;
-const SPRITE_W = 60;
-const SPRITE_H = 60;
+const toScreenX = (x) => Math.round(STAGE_W / 2 + x - SPRITE_W / 2);
+const toScreenY = (y) => Math.round(STAGE_H / 2 - y - SPRITE_H / 2); // +y is UP in Scratch
 
-export const toScreenX = (x) => Math.round(STAGE_W / 2 + x - SPRITE_W / 2);
-export const toScreenY = (y) => Math.round(STAGE_H / 2 - y - SPRITE_H / 2); // Scratch +y is UP
+function Bubble({ text, type }) {
+  return (
+    <div
+      style={{
+        position: "absolute",
+        bottom: 65,
+        left: "50%",
+        transform: "translateX(-50%)",
+        background: "#ffffff",
+        color: "#111827",
+        fontSize: 12,
+        maxWidth: 140,
+        whiteSpace: "nowrap",
+        padding: "4px 8px",
+        borderRadius: type === "say" ? 8 : 14,
+        border: "1px solid #d1d5db",
+        boxShadow: "0 2px 6px rgba(0,0,0,0.15)",
+        pointerEvents: "none",
+        zIndex: 30,
+      }}
+    >
+      <span>{text}</span>
+      {type === "say" ? (
+        <div
+          style={{
+            position: "absolute",
+            bottom: -6,
+            left: "50%",
+            transform: "translateX(-50%)",
+            width: 0,
+            height: 0,
+            borderLeft: "5px solid transparent",
+            borderRight: "5px solid transparent",
+            borderTop: "6px solid #ffffff",
+          }}
+        />
+      ) : (
+        <div
+          style={{
+            position: "absolute",
+            bottom: -8,
+            left: "50%",
+            transform: "translateX(-50%)",
+            display: "flex",
+            flexDirection: "column",
+            alignItems: "center",
+            gap: 1,
+          }}
+        >
+          <div
+            style={{
+              width: 5,
+              height: 5,
+              borderRadius: "50%",
+              background: "#ffffff",
+              border: "1px solid #d1d5db",
+            }}
+          />
+          <div
+            style={{
+              width: 3,
+              height: 3,
+              borderRadius: "50%",
+              background: "#ffffff",
+              border: "1px solid #d1d5db",
+            }}
+          />
+        </div>
+      )}
+    </div>
+  );
+}
 
-export default function SpriteRenderer({ sprite, isSelected = false }) {
-  const screenX = toScreenX(sprite.x);
-  const screenY = toScreenY(sprite.y);
+export default function SpriteRenderer({ sprite }) {
+  const { x, y, angle, avatar, speech } = sprite;
 
   return (
     <div
-      className="absolute top-0 left-0 pointer-events-none select-none"
       style={{
-        width: `${SPRITE_W}px`,
-        height: `${SPRITE_H}px`,
-        transform: `translate3d(${screenX}px, ${screenY}px, 0)`,
+        position: "absolute",
+        width: SPRITE_W,
+        height: SPRITE_H,
+        transform: `translate3d(${toScreenX(x)}px, ${toScreenY(y)}px, 0)`,
         transition: "transform 0.15s ease-out",
-        zIndex: isSelected ? 20 : 10,
       }}
     >
-      {/* Speech / Thought Bubble (Unrotated: sits directly on outer wrapper) */}
-      {sprite.speech && (
-        <div
-          className="absolute bottom-[66px] left-1/2 transform -translate-x-1/2 pointer-events-none z-30"
-          style={{ minWidth: "60px", maxWidth: "160px" }}
-        >
-          {sprite.speech.type === "say" ? (
-            <div className="relative bg-white text-gray-900 border border-gray-400 rounded-2xl px-3 py-1.5 text-xs font-bold shadow-lg text-center leading-snug">
-              <span>{sprite.speech.text}</span>
-              {/* Comic Speech Pointer Triangle */}
-              <div
-                className="absolute -bottom-2 left-1/2 transform -translate-x-1/2 w-0 h-0 border-l-[6px] border-l-transparent border-r-[6px] border-r-transparent border-t-[8px] border-t-white"
-                style={{ filter: "drop-shadow(0 1px 0 #9ca3af)" }}
-              />
-            </div>
-          ) : (
-            <div className="relative bg-white text-gray-900 border border-gray-400 rounded-full px-3 py-1.5 text-xs font-bold shadow-lg text-center leading-snug">
-              <span>{sprite.speech.text}</span>
-              {/* Cloud Thought Small Trailing Circles */}
-              <div className="absolute -bottom-2.5 left-1/2 transform -translate-x-1/2 flex flex-col items-center gap-0.5">
-                <span className="w-2 h-2 rounded-full bg-white border border-gray-400" />
-                <span className="w-1.5 h-1.5 rounded-full bg-white border border-gray-400 -mt-0.5" />
-              </div>
-            </div>
-          )}
-        </div>
-      )}
-
-      {/* Inner Avatar Container (Handles Rotation Only) */}
+      {speech && <Bubble {...speech} />} {/* on the UNROTATED wrapper */}
       <div
-        className={`w-full h-full flex items-center justify-center transition-transform duration-150 ${
-          isSelected ? "filter drop-shadow-[0_0_6px_rgba(59,130,246,0.7)]" : ""
-        }`}
         style={{
-          transform: `rotate(${sprite.angle}deg)`,
-          transformOrigin: "center center",
+          width: "100%",
+          height: "100%",
+          transform: `rotate(${angle}deg)`,
+          transition: "transform 0.15s ease-out",
+          transformOrigin: "50% 50%",
         }}
       >
-        {sprite.avatar === "horse" ? (
-          <HorseSprite className="w-full h-full object-contain" />
-        ) : (
-          <CatSprite />
-        )}
+        {avatar === "cat" ? <CatSprite /> : <HorseSprite />}
       </div>
     </div>
   );
