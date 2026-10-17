@@ -1,242 +1,415 @@
-# Juspay ReactJS Challenge — Project Memory & Architecture Guide
+# AGENTS.md — Juspay ReactJS Challenge (Scratch Clone)
 
-## 1. Project Overview & Deadlines
-- **Task:** Build a visual coding playground web application modeled after MIT Scratch.
-- **Deadline:** 3-day delivery timeline (weekend delivery by Monday).
-- **Deliverables:**
-  1. GitHub Repository Link (clean commits, comprehensive README).
-  2. Live Deployed Link (Vercel deployment pointing to `public/` directory).
-  3. Screen Recording (1–2 min walkthrough demonstrating block DnD, parameter editing, Cat & Horse sprites, Play execution, and collision swap).
-- **Evaluation Criteria:** Functional Programming (FP) patterns, code cleanliness, visual aesthetics, state immutability, and 100% adherence to specified feature requirements.
+This file is the contract. `PLAN.md` is the sequence. When they disagree, this file wins.
+Read this file in full at the start of every session before touching code.
 
 ---
 
-## 2. Technical Stack & Architectural Decisions
-- **Stack:** React 17.0.2, Tailwind CSS 2.0.1, Webpack 5.112.0, Native HTML5 Drag-and-Drop.
-- **Language:** JavaScript (ES6+). Zero TypeScript or ReScript conversion — starter is JS, converting introduces build overhead without adding eval points.
-- **Zero New Dependencies:** Everything ships with what's already in `package.json`. No `react-beautiful-dnd`, `framer-motion`, `uuid`, or Redux.
-- **FP Purity Boundary:**
-  > *All side effects are strictly quarantined in `engine/runner.js`; everything else in the codebase is pure functions, deterministic reducers, and declarative JSX.*
-- **Tailwind 2.0.1 Rules (No JIT):**
-  - Tailwind 2.0.1 lacks JIT. Arbitrary bracket syntax (e.g., `w-[480px]`, `min-w-[500px]`, `bg-[...]`) is **silently ignored** by PostCSS.
-  - Stage dimensions and fixed sizes must use inline styles: `style={{ width: 480, height: 360 }}`.
-  - Never use dynamic template-literal class names (`bg-${color}-500`); PurgeCSS strips them in production.
-- **Why No `framer-motion` for "Motion":**
-  - "Motion" in Scratch is a block category (`Move steps`, `Turn degrees`, `Go to x, y`), not an animation library.
-  - Sprites maintain explicit `x, y, angle` coordinates in state for accurate trigonometric updates and deterministic $AABB$ collision math.
-  - Visual smoothing is achieved via CSS transforms:
-    - Outer wrapper handles position: `transform: translate3d(${cssX}px, ${cssY}px, 0); transition: transform 0.15s ease-out;`
-    - Inner avatar container handles rotation: `transform: rotate(${angle}deg); transition: transform 0.15s ease-out;`
-    - Speech/thought bubbles sit on the unrotated outer wrapper so text stays upright regardless of sprite orientation.
-- **Deployment Output:** Webpack outputs to `public/` (not `dist/` or `build/`). Vercel `outputDirectory` must be configured as `public`.
+## 0. How to work in this repo (operating protocol)
+
+1. **One sprint per session.** Open `PLAN.md`, find the first sprint whose Done-criteria are not all checked, do only that sprint.
+2. **Read before you write.** `Sidebar.js`, `MidArea.js`, `PreviewArea.js`, `App.js`, `CatSprite.js`, `Icon.js` already exist. Read each one before editing it. Keep its existing Tailwind classes and three-column layout. Change only what the sprint requires.
+3. **Never invent a payload, export, or signature.** Every action payload is in §5. Every module export is in §6. If something you need is not there, stop and ask — do not improvise.
+4. **Copy the pseudocode in §8 structurally.** Rename nothing. It encodes race fixes that are invisible until the demo.
+5. **No new npm packages. No TypeScript. No ReScript.** `package.json` is read-only.
+6. **Numbers from inputs are strings.** Coerce with `Number(v) || 0` in the reducer (`UPDATE_BLOCK_PARAMS`) and again at the top of block execution. Never arithmetic on a raw param.
+7. **After every sprint:** `npm start`, open `http://localhost:3000`, confirm zero red errors in the browser console, run the sprint's Done-criteria, then `git commit -m "Sprint N: <subject>"`. A sprint is not done because the code "looks right"; it is done when every Done-criterion is observed.
+8. **Do not add features.** No sound, pen, sensing, variables, costumes, undo/redo, localStorage. If it is not in §3 it does not exist.
 
 ---
 
-## 3. Data Shapes & Type Contracts
+## 1. Project & deliverables
 
-### A. Block Item
-```javascript
+- **Task:** Visual coding playground modeled after MIT Scratch, built on the provided starter.
+- **Deliverables:** (1) GitHub repo with clean commits + README, (2) live Vercel URL, (3) 1–2 min screen recording.
+- **Evaluated on:** functional-programming discipline, code cleanliness, visual polish, state immutability, 100% feature adherence.
+- **FP purity boundary (quote this in the README):**
+  > All side effects are quarantined in `src/engine/runner.js`. Everything else is pure functions, a deterministic reducer, and declarative JSX.
+
+---
+
+## 2. Stack & environment gotchas
+
+| Fact | Consequence |
+|---|---|
+| React **17.0.2** | Dispatches after an `await` are **not batched** — each one re-renders synchronously. Harmless at 150 ms ticks, but never put 50 dispatches in a tight sync loop. Use `useLayoutEffect` (not `useEffect`) to mirror state into a ref. |
+| Tailwind **2.0.1, no JIT** | Bracket syntax (`w-[480px]`, `min-w-[500px]`) is **silently ignored**. Fixed pixel sizes go in `style={{ width: 480 }}`. Never build class names with template literals (`bg-${c}-500`) — purge strips them in production. Use the complete literal strings in §10. |
+| Webpack **5** outputs to **`public/`** | `vercel.json` → `{ "outputDirectory": "public" }`. Confirm `public/` build artifacts are in `.gitignore` before the first commit. |
+| Native **HTML5 DnD** | `dataTransfer` carries strings only (JSON-encode). `dragover` MUST call `preventDefault()` or `drop` never fires. See §9. |
+| Language | JavaScript ES6+. Types are documented with the JSDoc `@typedef` blocks in §4 — copy them to the top of `ScratchContext.js`. |
+
+---
+
+## 3. Scope (exactly this, nothing more)
+
+The PDF lists **6 functional requirements**; we ship **7 palette chips**.
+
+| Category | Chip | Params | Spec line it satisfies |
+|---|---|---|---|
+| Motion | Move `[steps]` steps | `steps` | "Move ___ steps" |
+| Motion | Turn ↻ `[degrees]` degrees | `degrees` | "turn ___ degrees" (CW half) |
+| Motion | Turn ↺ `[degrees]` degrees | `degrees` | "turn ___ degrees" (CCW half) |
+| Motion | Go to x: `[x]` y: `[y]` | `x`, `y` | "Go to x: y:" |
+| Control | Repeat `[repeatCount]` times `{ children }` | `repeatCount` | "Repeat animation (inside controls)" |
+| Looks | Say `[text]` for `[duration]` seconds | `text`, `duration` | "Say ___ for ___ seconds" |
+| Looks | Think `[text]` for `[duration]` seconds | `text`, `duration` | "think ___ for ___ seconds" |
+
+Also required: drag-and-drop workspace, Play button, Cat **and** Horse sprites, add-sprite, independent script per sprite, concurrent execution, **collision-based script swap (mandatory hero feature)**.
+
+**Repeat nesting is capped at one level.** A Repeat cannot contain a Repeat. The reducer enforces it (§5 `ADD_CHILD_BLOCK`).
+
+---
+
+## 4. Data shapes (copy these JSDoc blocks verbatim into `ScratchContext.js`)
+
+```js
 /**
- * Block types enum:
- * 'MOVE' | 'TURN_CW' | 'TURN_CCW' | 'GOTO' | 'REPEAT' | 'SAY' | 'THINK'
- * Note: Spec lists 6 functional requirements. TURN is split into CW and CCW
- * directional variants (7 palette chips total).
+ * @typedef {'MOVE'|'TURN_CW'|'TURN_CCW'|'GOTO'|'REPEAT'|'SAY'|'THINK'} BlockType
+ *
+ * @typedef {Object} BlockParams
+ * @property {number} [steps]        MOVE        default 10
+ * @property {number} [degrees]      TURN_*      default 15
+ * @property {number} [x]            GOTO        default 0
+ * @property {number} [y]            GOTO        default 0
+ * @property {number} [repeatCount]  REPEAT      default 10
+ * @property {string} [text]         SAY/THINK   default 'Hello!' / 'Hmm...'
+ * @property {number} [duration]     SAY/THINK   default 2 (seconds)
+ *
+ * @typedef {Object} BlockItem
+ * @property {string}      id        'blk-<n>', minted by the reducer from state.nextBlockNum
+ * @property {BlockType}   type
+ * @property {BlockParams} params    numeric fields are ALWAYS numbers (sanitized in reducer)
+ * @property {BlockItem[]} children  only non-empty for REPEAT; never contains a REPEAT
+ *
+ * @typedef {Object} Sprite
+ * @property {string}  id             'sprite-<n>'
+ * @property {string}  name           'Cat' | 'Horse' | 'Cat 3' ...
+ * @property {'cat'|'horse'} avatar
+ * @property {number}  x              Scratch coords, center origin, +x right, range [-240, 240]
+ * @property {number}  y              Scratch coords, +y UP, range [-180, 180]
+ * @property {number}  angle          degrees, 0 = facing right, clockwise positive
+ * @property {{text:string,type:'say'|'think'}|null} speech
+ * @property {BlockItem[]} script
+ * @property {number}  initialX
+ * @property {number}  initialY
+ * @property {number}  initialAngle
+ * @property {number}  scriptVersion  incremented ONLY by SWAP_SCRIPTS
+ *
+ * @typedef {Object} State
+ * @property {Object<string, Sprite>} sprites
+ * @property {string}  activeSpriteId
+ * @property {boolean} isRunning
+ * @property {number}  nextSpriteNum   starts at 3
+ * @property {number}  nextBlockNum    starts at 1
  */
-const BlockItemShape = {
-  id: 'blk-1',              // Deterministically minted by reducer
-  type: 'MOVE',             // BlockType
-  params: {
-    steps: 10,              // MOVE: default 10 (always Number)
-    degrees: 15,            // TURN_CW / TURN_CCW: default 15 (always Number)
-    x: 0,                   // GOTO: default 0 (always Number)
-    y: 0,                   // GOTO: default 0 (always Number)
-    repeatCount: 10,        // REPEAT: default 10 (always Number)
-    text: 'Hello!',         // SAY / THINK: default text (string)
-    duration: 2,            // SAY / THINK: default 2 (always Number, seconds)
-  },
-  children: [],             // BlockItem[] (only used when type === 'REPEAT', capped at 1 level)
-};
 ```
 
-### B. Sprite Shape
-```javascript
-const SpriteShape = {
-  id: 'sprite-1',           // Unique sprite key ('sprite-1', 'sprite-2')
-  name: 'Cat',              // Display label ('Cat', 'Horse')
-  avatar: 'cat',            // 'cat' | 'horse'
-  x: -80,                   // Scratch coordinates (-240 to +240, 0 is center)
-  y: 0,                     // Scratch coordinates (-180 to +180, 0 is center)
-  angle: 0,                 // Degrees (0 = facing right, clockwise positive)
-  speech: null,             // null | { text: string, type: 'say' | 'think' }
-  script: [],               // BlockItem[]
-  initialX: -80,            // Snapshot for Reset
-  initialY: 0,
-  initialAngle: 0,
-  scriptVersion: 0,         // Incremented on SWAP to restart active runner
-};
-```
+```js
+export const STAGE_W = 480, STAGE_H = 360, SPRITE_W = 60, SPRITE_H = 60;
+export const X_MAX = STAGE_W / 2 - SPRITE_W / 2;   // 210
+export const Y_MAX = STAGE_H / 2 - SPRITE_H / 2;   // 150
 
-### C. Global State
-```javascript
-const InitialState = {
+export const BLOCK_DEFAULTS = {
+  MOVE:     { steps: 10 },
+  TURN_CW:  { degrees: 15 },
+  TURN_CCW: { degrees: 15 },
+  GOTO:     { x: 0, y: 0 },
+  REPEAT:   { repeatCount: 10 },
+  SAY:      { text: 'Hello!', duration: 2 },
+  THINK:    { text: 'Hmm...', duration: 2 },
+};
+
+const makeSprite = (id, name, avatar, x, y) => ({
+  id, name, avatar, x, y, angle: 0, speech: null, script: [],
+  initialX: x, initialY: y, initialAngle: 0, scriptVersion: 0,
+});
+
+export const initialState = {
   sprites: {
-    'sprite-1': {
-      id: 'sprite-1',
-      name: 'Cat',
-      avatar: 'cat',
-      x: -80, y: 0, angle: 0,
-      speech: null,
-      script: [],
-      initialX: -80, initialY: 0, initialAngle: 0,
-      scriptVersion: 0,
-    },
-    'sprite-2': {
-      id: 'sprite-2',
-      name: 'Horse',
-      avatar: 'horse',
-      x: 80, y: 0, angle: 0,
-      speech: null,
-      script: [],
-      initialX: 80, initialY: 0, initialAngle: 0,
-      scriptVersion: 0,
-    },
+    'sprite-1': makeSprite('sprite-1', 'Cat',   'cat',   -80, 0),
+    'sprite-2': makeSprite('sprite-2', 'Horse', 'horse',  80, 0),
   },
   activeSpriteId: 'sprite-1',
   isRunning: false,
-  nextSpriteNum: 3,         // Counter for sprite IDs
-  nextBlockNum: 1,          // FP state-owned counter for deterministic block ID minting
+  nextSpriteNum: 3,
+  nextBlockNum: 1,
 };
 ```
 
 ---
 
-## 4. Action Payload Shapes & Reducer Contracts
+## 5. Actions — payloads and exact reducer behavior
 
-All state transitions are pure and deterministic. No module-level mutable variables.
+Every action is a flat object: `{ type, ...payload }`. No `payload:` wrapper. The reducer is a pure function `(state, action) => state`; every branch returns a new object; **no module-level mutable variables anywhere in `ScratchContext.js`**.
 
-| Action Type | Payload Properties | State Transformation & Guards |
+| `type` | Payload fields | Reducer behavior |
 |---|---|---|
-| `SELECT_SPRITE` | `{ spriteId: string }` | Sets `activeSpriteId`. No-op if `spriteId` does not exist. |
-| `ADD_BLOCK` | `{ spriteId: string, blockType: string, customParams?: object, index?: number }` | Mints ID `blk-${state.nextBlockNum}`, increments `state.nextBlockNum`. Inserts block at `index` or appends to `script`. |
-| `REMOVE_BLOCK` | `{ spriteId: string, blockId: string }` | Filters `blockId` from top-level script and any `REPEAT` children. |
-| `CLEAR_SCRIPT` | `{ spriteId: string }` | Sets `script: []` for target sprite. |
-| `UPDATE_BLOCK_PARAMS` | `{ spriteId: string, blockId: string, params: object }` | Merges sanitized params (`Number(v) \|\| 0` for numeric keys) into target block (or repeat child). |
-| `REORDER_BLOCKS` | `{ spriteId: string, fromIndex: number, toIndex: number }` | Moves block from `fromIndex` to `toIndex`. Guarded against out-of-bounds. |
-| `ADD_CHILD_BLOCK` | `{ spriteId: string, parentBlockId: string, blockType: string, customParams?: object, index?: number }` | Mints ID `blk-${state.nextBlockNum}`, increments `state.nextBlockNum`. Enforces **1-level cap**: ignores `blockType === 'REPEAT'`. |
-| `ADD_SPRITE` | none | Mints `sprite-${state.nextSpriteNum}`, alternates avatar (`cat` / `horse`), spawns off-lane at $(0, -100)$ or $(0, 100)$, increments `nextSpriteNum`. |
-| `DELETE_SPRITE` | `{ spriteId: string }` | Guarded: length > 1 and `!isRunning`. Reassigns `activeSpriteId` if active sprite was deleted. |
-| `UPDATE_SPRITE` | `{ spriteId: string, changes: object }` | Shallow merges position, angle, or speech into target sprite. |
-| `SWAP_SCRIPTS` | `{ spriteA: string, spriteB: string }` | Atomically swaps `script` between `spriteA` and `spriteB`. Increments `scriptVersion` on both. |
-| `SET_RUNNING` | `{ isRunning: boolean }` | Sets `isRunning` boolean flag. |
-| `RESET_SPRITES` | none | Restores all sprites to initial coordinates, angles, clears speech, and sets `isRunning: false`. |
+| `SELECT_SPRITE` | `spriteId` | Set `activeSpriteId`. No-op if id unknown. |
+| `ADD_BLOCK` | `spriteId`, `blockType`, `index?` | Mint `id = 'blk-' + state.nextBlockNum`; `nextBlockNum + 1`; block = `{ id, type, params: { ...BLOCK_DEFAULTS[type] }, children: [] }`; insert at `index` (or push). |
+| `ADD_CHILD_BLOCK` | `spriteId`, `parentBlockId`, `blockType`, `index?` | Same minting. **No-op if `blockType === 'REPEAT'`** or parent is not a REPEAT. Insert into `parent.children`. |
+| `REMOVE_BLOCK` | `spriteId`, `blockId` | Remove from top level **and** from any `children` array. |
+| `CLEAR_SCRIPT` | `spriteId` | `script: []`. |
+| `UPDATE_BLOCK_PARAMS` | `spriteId`, `blockId`, `params` | Find block at top level or inside children; merge params; **sanitize**: for keys in `{steps, degrees, x, y, repeatCount, duration}` store `Number(v) \|\| 0`; `text` stored as `String(v)`. |
+| `REORDER_BLOCKS` | `spriteId`, `fromIndex`, `toIndex` | Top-level only. No-op if either index out of range. `const next=[...script]; const [m]=next.splice(from,1); next.splice(to,0,m)`. |
+| `ADD_SPRITE` | — | `n = nextSpriteNum`; `id='sprite-'+n`; `avatar = n % 2 === 1 ? 'cat' : 'horse'`; `name = (avatar==='cat'?'Cat ':'Horse ') + n`; spawn at `(0, n % 2 === 1 ? -100 : 100)`; `nextSpriteNum + 1`; set `activeSpriteId` to new id. |
+| `DELETE_SPRITE` | `spriteId` | **No-op** if `isRunning` or only one sprite. Remove; if it was active, `activeSpriteId = first remaining key`. |
+| `UPDATE_SPRITE` | `spriteId`, `changes` | Shallow-merge `changes` into sprite. **If `changes.x` present → clamp to `[-X_MAX, X_MAX]`; if `changes.y` present → clamp to `[-Y_MAX, Y_MAX]`.** This is the only place clamping lives. |
+| `SWAP_SCRIPTS` | `spriteA`, `spriteB` | Swap the two `script` arrays; `scriptVersion + 1` on **both**. No-op if either id unknown. |
+| `SET_RUNNING` | `isRunning` | Set flag. |
+| `RESET_SPRITES` | — | Every sprite: `x=initialX, y=initialY, angle=initialAngle, speech=null`. `isRunning=false`. Scripts untouched. |
 
----
-
-## 5. Module Contracts
-
-### A. Context Hook Contract
-```javascript
-function useScratch(): {
-  state: GlobalState,
-  dispatch: (action: Action) => void,
-}
-```
-
-### B. Execution Engine Contract
-`engine/runner.js` owns its own constants and imports **nothing** from the React app (eliminating circular module dependencies):
-```javascript
-function createExecutionEngine(
-  dispatch: (action: Action) => void,
-  cancelRef: { current: boolean },
-  stateRef: { current: GlobalState }
-): {
-  start: () => void,
-  stop: () => void,
-}
+Helper pattern (use for every sprite-scoped action):
+```js
+const withSprite = (state, id, fn) =>
+  state.sprites[id]
+    ? { ...state, sprites: { ...state.sprites, [id]: fn(state.sprites[id]) } }
+    : state;
 ```
 
 ---
 
-## 6. Coordinate System & Mathematical Invariants
+## 6. Module contracts (exact exports — nothing else is exported)
 
-1. **Stage Dimensions:**
-   - Width: `STAGE_W = 480px`, Height: `STAGE_H = 360px` (standard 4:3 MIT Scratch ratio).
-   - Origin `(0, 0)` is at the exact center of the stage.
-   - $x$-range: `[-240, 240]`. $y$-range: `[-180, 180]`.
-2. **Sprite Dimensions:**
-   - Bounding box: `SPRITE_W = 60px`, `SPRITE_H = 60px`.
-3. **Screen / CSS Coordinate Conversion:**
-   ```javascript
-   const toScreenX = (x) => Math.round(STAGE_W / 2 + x - SPRITE_W / 2);
-   const toScreenY = (y) => Math.round(STAGE_H / 2 - y - SPRITE_H / 2); // Scratch +y is UP
-   ```
-4. **Trigonometric Movement (`Move steps`):**
-   - Angle convention: $0^\circ$ points right ($+x$). Clockwise rotation increases $\theta$.
-   - $\Delta x = \text{steps} \times \cos(\theta \times \frac{\pi}{180})$
-   - $\Delta y = - \text{steps} \times \sin(\theta \times \frac{\pi}{180})$ (negative because $+y$ in Scratch is upwards)
-5. **Clamping Invariant:**
-   - $x = \max(-210, \min(210, x))$ (prevents drifting beyond stage edges).
-   - $y = \max(-150, \min(150, y))$.
+### `src/state/ScratchContext.js`
+```js
+export { STAGE_W, STAGE_H, SPRITE_W, SPRITE_H, X_MAX, Y_MAX, BLOCK_DEFAULTS, initialState };
+export function reducer(state, action) { ... }          // pure
+export function ScratchProvider({ children }) { ... }   // owns everything stateful
+export function useScratch() { return { state, dispatch, engine }; }
+```
+Inside `ScratchProvider`:
+```js
+const [state, dispatch] = useReducer(reducer, initialState);
+const stateRef = useRef(state);
+useLayoutEffect(() => { stateRef.current = state; }, [state]);   // layout, not effect
+const engineRef = useRef(null);
+if (engineRef.current === null) engineRef.current = createExecutionEngine(dispatch, stateRef);
+// provide { state, dispatch, engine: engineRef.current }
+```
+`ScratchContext.js` imports `createExecutionEngine` from `../engine/runner`.
 
----
+### `src/engine/runner.js`
+```js
+export function createExecutionEngine(dispatch, stateRef) { return { start, stop }; }
+```
+**Imports nothing from the app.** Owns its own constants: `TICK_MS = 150`, `POLL_MS = 50`, `COLLIDE_PX = 55`, `COOLDOWN_MS = 700`. Dispatches plain action objects using the `type` strings from §5. This is the only module allowed to contain `let`, `Set`, `Map`, `setTimeout`, or any mutation.
 
-## 7. Execution & Runtime Semantics
-
-### A. Async Execution, State Ref Mirror & Pre-Registration
-- **State Ref Mirror:** `stateRef.current = state` is synchronized via `useLayoutEffect`. In React 17, `useLayoutEffect` commits synchronously before paint and async ticks, completely eliminating stale closure windows.
-- **Pre-Registration (Play Race Guard):** When Play starts:
-  1. `cancelRef.current = false`
-  2. `isEngineRunning = true`
-  3. Pre-register all sprite IDs into `activeRunners` **before** kicking off any async loops.
-  4. Launch `runSprite(id)` for each sprite.
-  This prevents sprites with empty scripts from completing synchronously and prematurely triggering `SET_RUNNING(false)` before other sprites have even started.
-- **Completion Check:** A sprite runner deletes its ID from `activeRunners` in `finally`. `maybeFinish()` checks `if (isEngineRunning && activeRunners.size === 0)`. When true, it sets `isEngineRunning = false` and dispatches `SET_RUNNING(false)`.
-
-### B. Wake-on-Stop Timer Tracking (No Zombie Runners)
-- The sleeper tracks active `{ timeoutId, resolve }` pairs in an engine-scoped Set.
-- When `stop()` / Reset is called:
-  1. Sets `cancelRef.current = true`.
-  2. Iterates all pending sleepers: calls `clearTimeout(timeoutId)` **AND immediately invokes `resolve()`**.
-  3. All sleeping runners wake up immediately, detect `cancelRef.current === true`, throw `ABORT_CANCEL`, and run their `finally` cleanup blocks.
-  Zero hanging promises, zero zombie closures.
-
-### C. Input Sanitization (Number Coercion)
-- HTML number inputs produce strings (`"10"`). In JavaScript, `s.x + "10"` produces string concatenation (`"-8010"`).
-- All numeric fields (`steps`, `degrees`, `x`, `y`, `duration`, `repeatCount`) are strictly coerced using `Number(val) || 0` both in `UPDATE_BLOCK_PARAMS` and at the start of block execution.
-
-### D. Synchronous Post-Movement Collision Check (No Detached rAF)
-- Collisions are an immediate physical consequence of sprite movement.
-- Eliminates the detached `requestAnimationFrame` loop entirely:
-  - Eliminates browser tab-hidden pauses.
-  - Eliminates extra timer lifecycle management and timer leak risks.
-  - Makes the entire execution and collision engine testable in headless Node.
-- Immediately after any `MOVE` or `GOTO` action dispatches new coordinates for a sprite:
-  1. The runner calls `checkCollisions()`.
-  2. Bounding box check: `isColliding = Math.abs(s1.x - s2.x) < 55 && Math.abs(s1.y - s2.y) < 55`.
-  3. Edge-trigger evaluation:
-     - At Play start, `wasColliding` is initialized to the **current initial overlap state** (preventing false swap at $t=0$).
-     - Swap triggers only on `isColliding && !wasColliding && Date.now() - lastSwapTimestamp > 700`.
-     - When sprites separate (`!isColliding`), `wasColliding` resets to `false`.
-  4. On collision trigger:
-     - Sets `wasColliding = true`, updates `lastSwapTimestamp = Date.now()`.
-     - Dispatches `SWAP_SCRIPTS({ spriteA: 'sprite-1', spriteB: 'sprite-2' })`.
-     - Swapped sprites increment `scriptVersion` and restart execution from block 0.
-     - Swapped sprites that had already finished are revived by invoking `runSprite(id)`.
-
-### E. Blocking Looks Actions & Guaranteed Cleanup
-- Setting a speech bubble is a blocking action for that specific sprite:
-  1. Dispatch `UPDATE_SPRITE(id, { speech: { text, type } })`
-  2. `try { await cancellableSleep(duration * 1000); }`
-  3. `finally { dispatch(UPDATE_SPRITE(id, { speech: null })); }`
-- Using `finally` guarantees speech bubbles are cleaned up immediately even if aborted by Stop or Swap.
+### Components
+- `PreviewArea.js` → `const { state, engine } = useScratch()`; Play calls `engine.start()`, Stop calls `engine.stop()`.
+- `MidArea.js`, `Sidebar.js`, `BlockItem.js`, `SpriteSelector.js` → `useScratch()` for `state` and `dispatch` only. They never touch `engine`.
+- `SpriteRenderer.js` → receives one `sprite` prop; renders `CatSprite` or `HorseSprite` by `sprite.avatar`.
 
 ---
 
-## 8. Hard Invariants
+## 7. Coordinate math (copy exactly)
 
-1. **No new npm packages.** Everything must run on React 17 + Tailwind v2 already installed.
-2. **Pure FP state updates.** Zero direct object mutation; every reducer branch returns a new shallow copy. ID minting belongs in reducer state (`nextBlockNum`).
-3. **No detached timer subsystems.** Collisions checked synchronously post-movement. All sleepers cancellable and woken on stop.
-4. **Collision edge-trigger + debounce.** Edge trigger on `false → true` plus 700ms cooldown backstop.
-5. **Speech bubble uprightness.** Speech bubble sits on unrotated outer wrapper.
-6. **Tailwind 2.0.1 compliance.** Inline styles for stage and sprite dimensions. No JIT bracket syntax.
+```js
+// Scratch coords -> CSS translate (top-left of the 60x60 sprite box)
+const toScreenX = (x) => Math.round(STAGE_W / 2 + x - SPRITE_W / 2);
+const toScreenY = (y) => Math.round(STAGE_H / 2 - y - SPRITE_H / 2);   // +y is UP in Scratch
+
+// MOVE: angle 0 = right, clockwise positive. Minus on sin because +y is up.
+const rad = angle * Math.PI / 180;
+const nx = x + steps * Math.cos(rad);
+const ny = y - steps * Math.sin(rad);
+```
+CSS `rotate(angle deg)` is clockwise-positive on screen, so the same `angle` value drives both the math and the transform with no sign change.
+
+Sprite markup (two wrappers — the bubble must not rotate):
+```jsx
+<div style={{ position:'absolute', width:SPRITE_W, height:SPRITE_H,
+              transform:`translate3d(${toScreenX(x)}px, ${toScreenY(y)}px, 0)`,
+              transition:'transform 0.15s ease-out' }}>
+  {speech && <Bubble {...speech} />}          {/* on the UNROTATED wrapper */}
+  <div style={{ width:'100%', height:'100%', transform:`rotate(${angle}deg)`,
+                transition:'transform 0.15s ease-out', transformOrigin:'50% 50%' }}>
+    {avatar === 'cat' ? <CatSprite /> : <HorseSprite />}
+  </div>
+</div>
+```
+
+---
+
+## 8. Execution engine — reference pseudocode (replicate this structure exactly)
+
+```js
+const ABORT_CANCEL  = Symbol();   // Stop pressed      -> leave runner
+const ABORT_RESTART = Symbol();   // scripts swapped   -> restart from block 0
+const num = (v) => Number(v) || 0;
+const pairKey = (a, b) => (a < b ? a + '|' + b : b + '|' + a);
+const isColliding = (a, b) => Math.abs(a.x - b.x) < COLLIDE_PX && Math.abs(a.y - b.y) < COLLIDE_PX;
+
+export function createExecutionEngine(dispatch, stateRef) {
+  let cancelled = false, engineRunning = false;
+  const activeRunners = new Set();   // spriteIds with a live runner
+  const sleepers = new Set();        // { timeoutId, resolve }
+  const wasColliding = new Map();    // pairKey -> bool
+  const lastSwapAt = new Map();      // pairKey -> ms
+  const sprite = (id) => stateRef.current.sprites[id];
+
+  // sleep that stop() can wake; caller re-checks abort right after it resolves
+  const sleep = (ms, abort) => new Promise((resolve) => {
+    const end = Date.now() + ms;
+    const tick = () => {
+      if (cancelled || Date.now() >= end) return resolve();
+      const entry = { resolve };
+      entry.timeoutId = setTimeout(() => { sleepers.delete(entry); tick(); },
+                                   Math.min(POLL_MS, end - Date.now()));
+      sleepers.add(entry);
+    };
+    tick();
+  }).then(() => abort());
+
+  // called SYNCHRONOUSLY after every MOVE / GOTO dispatch. No rAF anywhere.
+  const checkCollisions = () => {
+    const list = Object.values(stateRef.current.sprites);
+    for (let i = 0; i < list.length; i++) for (let j = i + 1; j < list.length; j++) {
+      const a = list[i], b = list[j], key = pairKey(a.id, b.id);
+      const now = isColliding(a, b), was = wasColliding.get(key) || false;
+      const cooled = Date.now() - (lastSwapAt.get(key) || 0) >= COOLDOWN_MS;
+      if (now && !was && cooled) {
+        lastSwapAt.set(key, Date.now());
+        dispatch({ type: 'SWAP_SCRIPTS', spriteA: a.id, spriteB: b.id });
+        [a.id, b.id].forEach((id) => { if (!activeRunners.has(id)) runSprite(id); }); // revive
+      }
+      wasColliding.set(key, now);
+    }
+  };
+
+  const seedCollisionState = () => {          // so pre-overlapping sprites don't swap at t=0
+    wasColliding.clear(); lastSwapAt.clear();
+    const list = Object.values(stateRef.current.sprites);
+    for (let i = 0; i < list.length; i++) for (let j = i + 1; j < list.length; j++)
+      wasColliding.set(pairKey(list[i].id, list[j].id), isColliding(list[i], list[j]));
+  };
+
+  const execBlock = async (id, block, abort) => {
+    const p = block.params;
+    switch (block.type) {
+      case 'MOVE': { const s = sprite(id), r = s.angle * Math.PI / 180, st = num(p.steps);
+        dispatch({ type:'UPDATE_SPRITE', spriteId:id, changes:{ x: s.x + st*Math.cos(r), y: s.y - st*Math.sin(r) } });
+        checkCollisions(); await sleep(TICK_MS, abort); break; }
+      case 'TURN_CW':  dispatch({ type:'UPDATE_SPRITE', spriteId:id, changes:{ angle: sprite(id).angle + num(p.degrees) } }); await sleep(TICK_MS, abort); break;
+      case 'TURN_CCW': dispatch({ type:'UPDATE_SPRITE', spriteId:id, changes:{ angle: sprite(id).angle - num(p.degrees) } }); await sleep(TICK_MS, abort); break;
+      case 'GOTO':     dispatch({ type:'UPDATE_SPRITE', spriteId:id, changes:{ x: num(p.x), y: num(p.y) } });
+                       checkCollisions(); await sleep(TICK_MS, abort); break;
+      case 'REPEAT': { const n = Math.max(0, Math.floor(num(p.repeatCount)));
+        for (let i = 0; i < n; i++) {
+          abort();
+          if (!block.children.length) { await sleep(POLL_MS, abort); continue; }   // empty loop can't starve
+          for (const c of block.children) { abort(); await execBlock(id, c, abort); }
+        } break; }
+      case 'SAY': case 'THINK':
+        dispatch({ type:'UPDATE_SPRITE', spriteId:id, changes:{ speech:{ text:String(p.text ?? ''), type: block.type==='SAY'?'say':'think' } } });
+        try { await sleep(num(p.duration) * 1000, abort); }
+        finally { dispatch({ type:'UPDATE_SPRITE', spriteId:id, changes:{ speech:null } }); }
+        break;
+    }
+  };
+
+  const maybeFinish = () => {
+    if (engineRunning && activeRunners.size === 0) { engineRunning = false; dispatch({ type:'SET_RUNNING', isRunning:false }); }
+  };
+
+  async function runSprite(id) {
+    activeRunners.add(id);                    // idempotent: covers pre-registration AND revival
+    try {
+      while (true) {                          // one iteration per scriptVersion
+        const s = sprite(id); if (cancelled || !s) return;
+        const version = s.scriptVersion;
+        const abort = () => {
+          if (cancelled || !sprite(id)) throw ABORT_CANCEL;
+          if (sprite(id).scriptVersion !== version) throw ABORT_RESTART;
+        };
+        try { for (const b of s.script) { abort(); await execBlock(id, b, abort); } return; }
+        catch (e) { if (e === ABORT_RESTART) continue; if (e === ABORT_CANCEL) return; throw e; }
+      }
+    } finally { activeRunners.delete(id); maybeFinish(); }
+  }
+
+  const start = () => {
+    if (engineRunning) return;
+    cancelled = false; engineRunning = true; seedCollisionState();
+    dispatch({ type:'SET_RUNNING', isRunning:true });
+    const ids = Object.keys(stateRef.current.sprites);
+    ids.forEach((id) => activeRunners.add(id));   // pre-register BEFORE any runner can finish
+    ids.forEach((id) => runSprite(id));
+  };
+
+  const stop = () => {
+    cancelled = true; engineRunning = false;
+    sleepers.forEach(({ timeoutId, resolve }) => { clearTimeout(timeoutId); resolve(); });  // wake, don't orphan
+    sleepers.clear(); activeRunners.clear();
+    dispatch({ type:'RESET_SPRITES' });
+  };
+
+  return { start, stop };
+}
+```
+
+Why each odd-looking line exists (do not "simplify" them away):
+- **Pre-register then start** — a sprite with an empty script finishes synchronously; without pre-registration `activeRunners` hits 0 before sprite 2 starts and `SET_RUNNING(false)` fires early.
+- **`resolve()` in `stop()`** — `clearTimeout` alone leaves every `await sleep()` hanging forever; `finally` blocks never run.
+- **`seedCollisionState()`** — edge-trigger defaults to "not colliding", so two sprites parked together would swap on the first move.
+- **`finally` around Say/Think** — speech must clear when a Reset or swap interrupts the wait.
+- **Revive in `checkCollisions`** — a sprite whose script already ended must still pick up the script it was handed.
+- **No `requestAnimationFrame`** — collisions are a consequence of movement, so checking after each position dispatch is exact, tab-safe, and testable in Node.
+
+---
+
+## 9. Drag-and-drop recipe (native HTML5)
+
+Transfer format — always one JSON string under one key:
+```js
+e.dataTransfer.setData('application/json', JSON.stringify(
+  { source: 'palette', blockType: 'MOVE' }          // from Sidebar
+  // or
+  { source: 'workspace', blockId: 'blk-4', fromIndex: 2 }   // from MidArea / BlockItem
+));
+```
+
+Every drop target needs **all five**:
+```jsx
+onDragOver={(e) => { e.preventDefault(); e.dataTransfer.dropEffect = 'move'; }}  // without preventDefault, drop never fires
+onDrop={(e) => {
+  e.preventDefault();
+  e.stopPropagation();                               // REQUIRED on the Repeat slot and on BlockItem, or the parent list also receives it
+  const data = JSON.parse(e.dataTransfer.getData('application/json') || '{}');
+  ...dispatch...
+}}
+```
+
+Dispatch mapping:
+| Drop onto | `source === 'palette'` | `source === 'workspace'` |
+|---|---|---|
+| MidArea list (or a BlockItem at index `i`) | `ADD_BLOCK { spriteId, blockType, index:i }` | `REORDER_BLOCKS { spriteId, fromIndex, toIndex:i }` |
+| Repeat slot of block `P` | `ADD_CHILD_BLOCK { spriteId, parentBlockId:P, blockType }` | ignore (no cross-container moves; keep it simple) |
+| Sidebar | ignore | `REMOVE_BLOCK { spriteId, blockId }` |
+
+Every draggable sets `draggable={!state.isRunning}` and `onDragStart` writes the JSON above. Inputs inside blocks must call `e.stopPropagation()` on `onMouseDown`, otherwise clicking an input starts a drag.
+
+---
+
+## 10. UI rules
+
+- **Edit lock while `isRunning`:** palette `draggable=false`, inputs `disabled`, trash buttons `disabled`, reorder disabled, Sidebar drop target inert, sprite `×` disabled, "+" sprite disabled. Play button disabled while running; Stop enabled only while running.
+- **Block colors (literal class strings, no templates):** Motion `bg-blue-500 text-white`; Looks `bg-purple-500 text-white`; Control `bg-yellow-500 text-black`. Inputs: `bg-white text-black rounded-full px-2 w-14 text-center` (text inputs `w-24`).
+- **Stage:** `style={{ width: 480, height: 360, position: 'relative', overflow: 'hidden' }}`; light background with a subtle border.
+- **Bubbles:** absolutely positioned above the sprite on the *unrotated* wrapper (§7). Say = rounded rectangle with a small triangle tail. Think = rounded rectangle with two small trailing circles. White background, dark text, 12px font, max-width 140px, `whiteSpace: 'nowrap'`.
+- **SpriteSelector:** horizontal row under the stage. Card = thumbnail (sprite SVG scaled to 40px), name, `x`/`y` rounded to integers, `×` (guards per §5), active card has `border-2 border-blue-500`. A "+" card at the end.
+- **MidArea header:** active sprite name, a "Clear" button → `CLEAR_SCRIPT`.
+- **HorseSprite.js:** a hand-drawn SVG horse, `viewBox="0 0 95 100"`, same outer dimensions as `CatSprite`, brown/tan palette, facing right. Simple shapes are fine; it must read as a horse at 60px.
+
+---
+
+## 11. Hard invariants (the reviewer checks these)
+
+1. No new npm packages. `package.json` unchanged.
+2. `ScratchContext.js` has zero `let`, zero module-level mutable variables, zero mutation; every reducer branch returns a new object.
+3. All timers, sets and maps live in `runner.js` and nowhere else.
+4. Clamping happens in the reducer (`UPDATE_SPRITE`) only.
+5. ID minting happens in the reducer from `nextBlockNum` / `nextSpriteNum` only.
+6. Collision is edge-triggered per pair with a 700 ms cooldown; checked synchronously after position changes; no `requestAnimationFrame`.
+7. Speech bubbles never rotate.
+8. No bracket Tailwind syntax, no template-literal class names.
+9. `runner.js` imports nothing from the app.

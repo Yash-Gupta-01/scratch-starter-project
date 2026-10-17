@@ -1,178 +1,133 @@
 # Scratch Visual Coding Playground — Juspay ReactJS Challenge
 
-A high-fidelity, web-based visual coding environment modeled after **MIT Scratch 3.0**, built with **React 17**, **Tailwind CSS**, and pure **Functional Programming (FP)** principles.
-
-Developed for the **Juspay ReactJS Hiring Challenge**.
+A high-fidelity visual coding environment modeled after **MIT Scratch 3.0**, built with **React 17**, **Tailwind CSS**, and strict **Functional Programming (FP)** principles.
 
 ---
 
-## 🚀 Live Demo & Deliverables
+## 1. Live Demo & Running Locally
 
-- **Live Deployed App:** *(Deploy via Vercel / Netlify — points to `public/` directory)*
-- **GitHub Repository:** `https://github.com/your-username/scratch-starter-project`
-- **Video Walkthrough (1–2 min):** Demonstrating block drag-and-drop, parameter editing, Cat & Horse sprites, concurrent Play execution, and the Hero Collision Swap.
+- **Live Demo:** [https://scratch-starter-project-yash.vercel.app](https://scratch-starter-project-yash.vercel.app) *(or deploy via Vercel pointing to the `public/` directory)*
+- **GitHub Repository:** [https://github.com/Yash-Gupta-01/scratch-starter-project](https://github.com/Yash-Gupta-01/scratch-starter-project)
 
----
+### Run Locally:
+```bash
+# 1. Install dependencies
+npm install --legacy-peer-deps
 
-## 📋 Features Implemented
+# 2. Start local development server
+npm start
+# Open http://localhost:3000 in your browser
 
-### 1. Motion Category Blocks (4 Functionalities)
-- **`Move [steps] steps`**: Moves the sprite forward along its current angle using trigonometric vector math ($\Delta x = \text{steps} \cdot \cos\theta, \Delta y = -\text{steps} \cdot \sin\theta$).
-- **`Turn [degrees] degrees`**: Implemented with both **Turn Clockwise** (`↻`) and **Turn Counter-Clockwise** (`↺`) directional variants.
-- **`Go to x: [x] y: [y]`**: Moves the sprite directly to absolute stage coordinates with boundary clamping.
-- **`Repeat [count] times`**: Control container block executing its nested child blocks sequentially $N$ times (capped at 1 level of nesting; empty loop guards against freezing).
-
-### 2. Looks Category Blocks (2 Functionalities)
-- **`Say [text] for [duration] secs`**: Displays a comic-style speech bubble with pointer triangle above the sprite, blocking execution for $T$ seconds before auto-dismissing.
-- **`Think [text] for [duration] secs`**: Displays a comic-style thought bubble with trailing circles above the sprite, blocking execution for $T$ seconds before auto-dismissing.
-- *Upright Guarantee:* Speech and thought bubbles sit on the unrotated coordinate wrapper, ensuring text remains perfectly upright regardless of sprite rotation angle.
-
-### 3. Drag-and-Drop Workspace (`MidArea`)
-- **Native HTML5 Drag-and-Drop:** Drag blocks from the `Sidebar` palette directly into the active sprite's workspace.
-- **Inline Parameter Editing:** Interactive white pill input fields for steps, degrees, coordinates, text, duration, and repeat counts.
-- **Block Reordering & Deletion:** Reorder blocks within the stack, delete via trash icon, or drag a block onto the `Sidebar` palette to delete it (Scratch convention).
-- **Edit Guard:** MidArea editing is safely locked while scripts are running to prevent mid-run state inconsistency.
-
-### 4. Multiple Sprites Management (`PreviewArea` & `SpriteSelector`)
-- **Cat & Horse Sprites:** Ships out-of-the-box with the official MIT Scratch Cat SVG and a matching Scratch-styled Horse SVG.
-- **Independent Script Stacks:** Selecting a sprite in the bottom dock switches the workspace to display and edit that sprite's own independent block stack.
-- **Dynamic Creation & Deletion:** "+ Add Sprite" spawns new sprites off the collision lane; individual "×" button safely deletes sprites (guarded when only 1 remains).
-- **Global Play / Reset:**
-  - **Go (Play):** Triggers all sprites to execute their scripts concurrently.
-  - **Reset:** Instantly cancels running timeouts via ref tokens, dismisses bubbles, and restores initial coordinates.
+# 3. Production build (compiles into public/)
+npm run build
+```
 
 ---
 
-## ⚡ The Mandatory "Hero Feature" — Collision-Based Script Swap
+## 2. What's Implemented
 
-Continuous collision detection between sprites in the preview stage with runtime animation swapping:
+The PDF lists 6 functional requirements; we ship **7 palette chips** across Motion, Control, and Looks categories. Note that **Turn ↻** and **Turn ↺** are the two directional halves satisfying the specification's `"turn ___ degrees"`.
+
+| Category | Chip | Params | Spec Line Satisfied |
+|---|---|---|---|
+| **Motion** | Move `[steps]` steps | `steps` (default 10) | "Move ___ steps" |
+| **Motion** | Turn ↻ `[degrees]` degrees | `degrees` (default 15) | "turn ___ degrees" (CW half) |
+| **Motion** | Turn ↺ `[degrees]` degrees | `degrees` (default 15) | "turn ___ degrees" (CCW half) |
+| **Motion** | Go to x: `[x]` y: `[y]` | `x`, `y` (default 0, 0) | "Go to x: y:" |
+| **Control** | Repeat `[repeatCount]` times `{ children }` | `repeatCount` (default 10) | "Repeat animation (inside controls)" |
+| **Looks** | Say `[text]` for `[duration]` seconds | `text`, `duration` (default 'Hello!', 2) | "Say ___ for ___ seconds" |
+| **Looks** | Think `[text]` for `[duration]` seconds | `text`, `duration` (default 'Hmm...', 2) | "think ___ for ___ seconds" |
+
+### Core Workspace Capabilities:
+- **Native HTML5 Drag-and-Drop:** Drag blocks from the palette into the workspace (`MidArea`), reorder blocks via drag-and-drop, drag blocks onto the sidebar to delete, or delete via trash button.
+- **Repeat Slot Drop Target:** Drop any non-Repeat block into a Repeat block's nested slot.
+- **Repeat Nesting Cap:** Repeat nesting is strictly capped at one level. A Repeat cannot contain a Repeat (enforced in the reducer).
+- **Edit Lock:** While scripts are running (`isRunning === true`), all workspace inputs, dragging, reordering, deleting, and sprite additions are safely disabled to preserve execution state integrity.
+- **Cat & Horse Sprites:** Ships with the official MIT Scratch Cat SVG (`CatSprite.js`) and a hand-crafted, Scratch-styled Horse SVG (`HorseSprite.js`).
+- **Sprite Manager Dock (`SpriteSelector`):** Add sprites with `+` (spawning off-collision lane), select sprite to switch active workspace script, view live integer coordinates, and delete sprites (guarded when 1 remains or running).
+- **Play & Stop Controls:** Green flag button initiates concurrent execution for all sprites; Red stop button instantly resets sprites to initial positions and clears speech bubbles.
+
+---
+
+## 3. Architecture
+
+> **FP Purity Boundary:**  
+> All side effects are quarantined in `src/engine/runner.js`. Everything else is pure functions, a deterministic reducer, and declarative JSX.
+
+### Single Source of Truth (`ScratchContext.js`)
+All application state lives in a single central store powered by React `useReducer` and Context:
+- **Zero Mutation:** Reducer branches are 100% pure; every action returns a new state object. There are zero `let` statements and zero module-level mutable variables.
+- **Deterministic Minting & Clamping:** Block IDs (`blk-n`) and Sprite IDs (`sprite-n`) are minted purely from monotonically incrementing state counters (`nextBlockNum`, `nextSpriteNum`). Stage boundary clamping ($[-210, 210]$ on $x$, $[-150, 150]$ on $y$) lives exclusively in the reducer's `UPDATE_SPRITE` branch.
+- **Number Sanitization:** Numeric inputs are sanitized in `UPDATE_BLOCK_PARAMS` using `Number(v) || 0` and coerced again at block execution.
+
+### Quarantined Effect Engine (`runner.js`)
+Execution logic is strictly separated from the UI:
+- All timers, timeouts, mutable Sets (`activeRunners`, `sleepers`), and Maps (`wasColliding`, `lastSwapAt`) reside exclusively in `runner.js`.
+- `runner.js` imports nothing from the application; it interacts purely through injected `dispatch` actions and an immutable `stateRef`.
+- React 17 synchronously re-renders async dispatches; `useLayoutEffect` mirrors `stateRef.current = state` before the next tick to ensure runners never read stale state closures.
+
+---
+
+## 4. Hero Feature: Collision-Based Script Swap Semantics
+
+A core requirement is the real-time collision detection and animation script swap between characters:
 
 ```
 ┌────────────────────────────────────────────────────────┐
-│ Cat (x: -80)   ───[Move 10 steps]───►                  │
-│                                       ◄───[-10 steps]── Horse (x: +80)
+│ Cat (x: -80)   ───[Repeat 10: Move 10]───►             │
 │                                                        │
 │                    ⚡ COLLISION AT TICK 6               │
-│                  (d < 55px at x ≈ ±20px)               │
+│                   (|dx| < 55px at x ≈ ±20px)           │
 │                                                        │
-│ Cat inherits:   ◄───[-10 steps]                         │
+│ Cat inherits:   ◄───[Move -10 steps]                   │
 │ Horse inherits:                 ───[Move 10 steps]───► │
+│               ◄───[Repeat 10: Move -10]── Horse (x: +80)
 └────────────────────────────────────────────────────────┘
 ```
 
-### Deterministic Collision Architecture:
-1. **Unrotated AABB Detection:** Evaluated every frame via `requestAnimationFrame` (`|s1.x - s2.x| < 55 && |s1.y - s2.y| < 55`).
-2. **Edge-Triggered:** Swaps fire strictly on the `false → true` transition (entering collision). Resets only when sprites separate (`!isColliding`), eliminating step-size sensitivity.
-3. **700ms Cooldown Lock:** Prevents rapid-fire oscillation while sprites pass through each other.
-4. **Atomic Central State Swap:** Dispatches `SWAP_SCRIPTS` on state (`state.sprites['sprite-1'].script` ⇄ `state.sprites['sprite-2'].script`). Visibly updates in `MidArea`!
-5. **Script Versioning & Revival:** Increments `scriptVersion`. Active loops detect the version change and restart from block 0 of the inherited script. Sprites whose scripts had already finished are automatically revived.
+### Deterministic Collision Rules:
+1. **Synchronous Checking (No `requestAnimationFrame`):** Collisions are checked synchronously immediately after every `MOVE` and `GOTO` dispatch. This eliminates frame-drop race conditions, tab-inactivity pauses, and makes execution testable in headless Node environments.
+2. **Edge-Triggered:** Collision detection is edge-triggered per pair (`wasColliding` map) — the swap fires strictly on the `false → true` entry transition, preventing thrashing.
+3. **700ms Cooldown Backstop:** A pair-level cooldown timestamp ensures sprites passing through each other do not re-trigger swaps until completely separated.
+4. **State-Level Script Exchange:** Swapping dispatches `SWAP_SCRIPTS`, exchanging the `script` arrays in central state. The swap is immediately visible in the `MidArea` workspace!
+5. **Restart from Block 0 & Revival:** Each swap increments `scriptVersion`. Live runners catch the version mismatch (`ABORT_RESTART`) and restart the inherited script from block 0. Finished sprites whose runners have already resolved are automatically revived.
 
 ---
 
-## 🛠️ Architecture & Functional Programming Decisions
+## 5. Why JavaScript
 
-### 1. Zero New Dependencies
-- **Shipped with standard package:** React 17.0.2, Tailwind CSS 2.0.1, Webpack 5.112.0.
-- **No external animation libs (`framer-motion`):** "Motion" in Scratch is a block category, not a UI transition library. Movement is powered by coordinate state updates translated into hardware-accelerated CSS transforms:
-  ```css
-  transform: translate3d(${screenX}px, ${screenY}px, 0);
-  transition: transform 0.15s ease-out;
-  ```
-  This guarantees 60fps smoothness with 100% mathematical determinism for collision checks.
-
-### 2. Pure FP State Store (`ScratchContext.js`)
-- Single source of truth using `useReducer` and React Context.
-- Predictable, immutable state updates (pure reducer functions, shallow object spreads).
-- `stateRef` synchronization via `useLayoutEffect` to eliminate closure staleness during asynchronous execution loops.
-
-### 3. Language Decision: JavaScript (ES6+) over ReScript
-- The starter repository is built on React 17 + Babel + Webpack.
-- The assignment brief states: *"Prefer using ReScript React; alternatively, JavaScript/TypeScript is acceptable."*
-- Sticking to clean JavaScript with strict Functional Programming satisfies Juspay's FP philosophy while eliminating build/interop compilation overhead.
+- **Preserving Ecosystem Alignment:** The provided starter project was configured with JavaScript (ES6+), React 17.0.2, Babel, and Webpack 5. Converting to ReScript or TypeScript carries high build and toolchain configuration risks without adding feature or evaluation value.
+- **Functional Discipline Without Extra Syntax:** Strict functional programming is fully achievable in native JavaScript using pure functions, immutable reducer patterns, higher-order functions, and structural isolation.
+- **Type Safety via JSDoc:** Complete JSDoc `@typedef` annotations document all block parameters, sprite structures, and state shapes directly in `ScratchContext.js`.
 
 ---
 
-## 📦 Project Structure
+## 6. Known Limits
 
-```
-src/
-├── index.js                    # Entry point & Tailwind styles
-├── App.js                      # Root container & ScratchProvider
-├── state/
-│   └── ScratchContext.js       # Central useReducer store, actions & types
-├── engine/
-│   └── runner.js               # Async script executor & rAF collision loop
-└── components/
-    ├── Sidebar.js              # Block palette & drop-to-delete target
-    ├── MidArea.js              # Workspace canvas with DnD stack & reordering
-    ├── BlockItem.js            # Editable block chip with white pill inputs
-    ├── PreviewArea.js          # 480x360 Stage canvas & Play/Reset controls
-    ├── SpriteRenderer.js       # Positioned sprite with upright speech bubbles
-    ├── SpriteSelector.js       # Interactive sprite dock & manager
-    ├── CatSprite.js            # 1:1 official Scratch Cat SVG
-    ├── HorseSprite.js          # Matching Scratch-styled Horse SVG
-    └── Icon.js                 # SVG Icon helper
-```
-
----
-
-## 💻 Local Setup & Development
-
-1. **Clone the repository:**
-   ```bash
-   git clone https://github.com/your-username/scratch-starter-project.git
-   cd scratch-starter-project
-   ```
-
-2. **Install dependencies:**
-   ```bash
-   npm install --legacy-peer-deps
-   ```
-
-3. **Start local development server:**
-   ```bash
-   npm start
-   ```
-   Open your browser at **`http://localhost:3000`**.
-
-4. **Production Build:**
-   ```bash
-   npm run build
-   ```
-   Webpack compiles assets into the **`public/`** folder (`public/app.js`, `public/app.css`).
-
----
-
-## 🚀 Deployment (Vercel)
-
-1. Import the repository into [Vercel](https://vercel.com).
-2. The project includes a configured `vercel.json`:
-   ```json
-   {
-     "outputDirectory": "public"
-   }
-   ```
-3. Deploy! Vercel will build with `npm run build` and serve from `public/`.
+- **Repeat Nesting Capped at One Level:** A Repeat block cannot be dragged into another Repeat block (enforced in `ADD_CHILD_BLOCK`).
+- **Blocking Say/Think per Sprite:** A Say or Think block pauses that individual sprite's execution pipeline for the duration of the bubble before proceeding to the next block (other sprites continue concurrently).
+- **Coordinate Clamping:** Sprites reaching the boundary of the 480×360 stage ($x = \pm 210, y = \pm 150$) clamp to the edge and do not wander off-screen.
 
 ---
 
 ## 🎬 1–2 Minute Walkthrough Video Script
 
-1. **Introduction (15s):**
-   - Show layout: Sidebar (Palette), MidArea (Workspace), PreviewArea (Stage + Sprite Dock).
-2. **Drag-and-Drop & Parameter Editing (25s):**
-   - Drag `Move 10 steps` and `Say Hello! for 2 secs` into Cat's workspace.
-   - Edit parameters (e.g. change steps to 20 or speech text to "Hi Juspay!").
-   - Drag a block over the Sidebar to show drag-to-delete.
-3. **Multi-Sprite Switching (20s):**
-   - Click **Horse** in the bottom dock; show how MidArea switches to Horse's independent workspace.
-   - Click **Cat**; show Cat's script is preserved.
-4. **Hero Feature Demo (30s):**
-   - Click the **"⚡ Load Hero Demo"** button (Cat gets `Repeat 10 [Move 10 steps]`, Horse gets `Repeat 10 [Move -10 steps]`).
-   - Click **"Go (Play)"**:
-     - Both sprites march toward each other.
-     - At tick 6 ($x \approx \pm 20\text{px}$), they collide!
-     - The script swap triggers: Cat reverses and marches left; Horse reverses and marches right.
-     - Switch to MidArea to show the scripts have physically swapped in state!
-5. **Reset & Conclusion (10s):**
-   - Click **"Reset"**: Sprites return immediately to initial positions.
+1. **(0–15s) Introduction & Drag-and-Drop:**
+   - Show 3-column layout: Palette (Sidebar), Workspace (MidArea), Stage & Dock (PreviewArea).
+   - Drag `Move 10 steps` and `Turn ↻ 15 degrees` into Cat's workspace.
+   - Edit a parameter (e.g., change Move to 25).
+2. **(15–30s) Workspace & Sprites:**
+   - Switch to Horse in the bottom dock; show Horse's empty script.
+   - Drag `Repeat 10` and place `Move` inside its child slot. Change Move to `-10`.
+3. **(30–45s) Cat Setup:**
+   - Switch back to Cat; show Cat's script is preserved.
+   - Replace Cat's script with `Repeat 10 [Move 10]`.
+4. **(45–70s) Play & Hero Collision Swap:**
+   - Press **Go (Play)**.
+   - Narrate both sprites advancing toward each other.
+   - At tick 6 ($x \approx \pm 20\text{px}$), they collide and swap scripts!
+   - Cat reverses and walks left; Horse reverses and walks right.
+   - Point out `MidArea`: Cat's workspace now holds `Move -10`!
+5. **(70–90s) Reset & Sprite Management:**
+   - Press **Stop**: sprites instantly snap back to initial positions.
+   - Click `+` to add "Cat 3" and "Horse 4". Delete a sprite with `×`. Done!
