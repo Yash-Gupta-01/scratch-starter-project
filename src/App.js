@@ -34,7 +34,10 @@ export default function App() {
           </div>
 
           {/* Right: Stage Canvas & Sprite Manager */}
-          <div className="w-1/3 min-w-[500px] flex flex-col bg-white border border-gray-200 rounded-xl overflow-hidden shadow-sm">
+          <div
+            style={{ width: "33.333333%", minWidth: 500 }}
+            className="flex flex-col bg-white border border-gray-200 rounded-xl overflow-hidden shadow-sm"
+          >
             <PreviewArea />
           </div>
         </div>
