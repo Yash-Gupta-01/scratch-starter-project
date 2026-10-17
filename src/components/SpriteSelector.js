@@ -61,8 +61,8 @@ export default function SpriteSelector() {
               onClick={() => handleSelect(sprite.id)}
               className={`relative flex items-center p-2 rounded-lg border cursor-pointer transition-all ${
                 isSelected
-                  ? "bg-blue-50/70 border-blue-400 ring-2 ring-blue-300 shadow-sm"
-                  : "bg-gray-50/70 border-gray-200 hover:bg-gray-100/60"
+                  ? "bg-blue-50 border-2 border-blue-500 shadow-sm"
+                  : "bg-gray-50 border-gray-200 hover:bg-gray-100"
               }`}
             >
               {/* Thumbnail */}
@@ -79,10 +79,10 @@ export default function SpriteSelector() {
                 <p className="text-xs font-extrabold text-gray-800 truncate">
                   {sprite.name}
                 </p>
-                <p className="text-[10px] text-gray-500 font-mono">
-                  x: {sprite.x}, y: {sprite.y}
+                <p style={{ fontSize: 10 }} className="text-gray-500 font-mono">
+                  x: {Math.round(sprite.x)}, y: {Math.round(sprite.y)}
                 </p>
-                <p className="text-[10px] text-gray-400">
+                <p style={{ fontSize: 10 }} className="text-gray-400">
                   {sprite.script.length} {sprite.script.length === 1 ? "block" : "blocks"}
                 </p>
               </div>
