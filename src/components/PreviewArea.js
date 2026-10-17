@@ -13,9 +13,12 @@ export default function PreviewArea() {
     engine.start();
   };
 
-  const handleStop = () => {
-    if (!engine) return;
-    engine.stop();
+  const handleStopOrReset = () => {
+    if (isRunning) {
+      if (engine) engine.stop();
+    } else if (hasMoved) {
+      dispatch({ type: "RESET_SPRITES" });
+    }
   };
 
   const spritesList = Object.values(state.sprites);
@@ -26,6 +29,7 @@ export default function PreviewArea() {
       s.angle !== s.initialAngle ||
       s.speech !== null
   );
+  const isStopDisabled = !isRunning && !hasMoved;
 
   return (
     <div className="flex-1 h-full flex flex-col p-3 bg-gray-50 overflow-y-auto">
@@ -35,9 +39,11 @@ export default function PreviewArea() {
           {/* Green Flag Play */}
           <button
             type="button"
+            aria-label="Run All Scripts"
             title="Run All Scripts"
             onClick={handlePlay}
             disabled={isRunning}
+            style={{ minHeight: 32 }}
             className={`flex items-center gap-1.5 px-3 py-1.5 rounded font-bold text-xs text-white shadow ${
               isRunning
                 ? "bg-green-400 opacity-60 cursor-not-allowed"
@@ -48,36 +54,23 @@ export default function PreviewArea() {
             <span>Go</span>
           </button>
 
-          {/* Red Stop */}
+          {/* Red Stop / Reset Button */}
           <button
             type="button"
-            title="Stop Execution"
-            onClick={handleStop}
-            disabled={!isRunning}
+            aria-label={isRunning ? "Stop execution" : "Reset stage"}
+            title={isRunning ? "Stop execution" : "Reset sprites to starting positions"}
+            onClick={handleStopOrReset}
+            disabled={isStopDisabled}
+            style={{ minHeight: 32 }}
             className={`flex items-center gap-1.5 px-3 py-1.5 rounded font-bold text-xs text-white shadow ${
-              !isRunning
+              isStopDisabled
                 ? "bg-red-400 opacity-60 cursor-not-allowed"
                 : "bg-red-600 hover:bg-red-700 cursor-pointer"
             }`}
           >
-            <Icon name="stop" size={13} className="fill-current text-white" />
-            <span>Stop</span>
+            <Icon name={isRunning ? "stop" : "undo"} size={12} className="fill-current text-white" />
+            <span>{isRunning ? "Stop" : "Reset"}</span>
           </button>
-
-          {/* Reset Button (shows up when sprites have moved, disappears on reset) */}
-          {!isRunning && hasMoved && (
-            <button
-              type="button"
-              aria-label="Reset stage"
-              title="Reset Sprites to Starting Positions"
-              onClick={() => dispatch({ type: "RESET_SPRITES" })}
-              style={{ minHeight: 32 }}
-              className="flex items-center gap-1.5 px-3 py-1.5 rounded font-bold text-xs text-white bg-blue-600 hover:bg-blue-700 shadow cursor-pointer transition-colors"
-            >
-              <Icon name="undo" size={12} className="fill-current text-white" />
-              <span>Reset</span>
-            </button>
-          )}
         </div>
 
       </div>
