@@ -1,6 +1,73 @@
-import React from "react";
+import React, { useState, useEffect } from "react";
 import Icon from "./Icon";
 import { useScratch } from "../state/ScratchContext";
+
+function ParamInput({
+  field,
+  defaultValue,
+  value,
+  isWide = false,
+  isRunning,
+  onChangeParam,
+}) {
+  const isNumeric = field !== "text";
+  const [localVal, setLocalVal] = useState(String(value ?? defaultValue));
+  const [hasError, setHasError] = useState(false);
+
+  useEffect(() => {
+    setLocalVal(String(value ?? defaultValue));
+    setHasError(false);
+  }, [value, defaultValue]);
+
+  const handleChange = (e) => {
+    const val = e.target.value;
+    setLocalVal(val);
+
+    if (isNumeric) {
+      if (val === "" || val === "-") {
+        setHasError(false);
+        return;
+      }
+      if (Number.isNaN(Number(val))) {
+        setHasError(true);
+        return;
+      }
+      setHasError(false);
+      onChangeParam(field, Number(val));
+    } else {
+      onChangeParam(field, val);
+    }
+  };
+
+  const handleBlur = () => {
+    if (isNumeric) {
+      if (localVal === "" || localVal === "-" || Number.isNaN(Number(localVal))) {
+        const fallback = Number(localVal) || 0;
+        setLocalVal(String(fallback));
+        setHasError(false);
+        onChangeParam(field, fallback);
+      }
+    }
+  };
+
+  const widthClass = isWide ? "w-24" : "w-14";
+  const errorClass = hasError
+    ? "border-2 border-red-500 bg-red-50 text-red-700"
+    : "border border-transparent";
+
+  return (
+    <input
+      type="text"
+      disabled={isRunning}
+      value={localVal}
+      title={hasError ? "Please enter a valid number" : undefined}
+      onMouseDown={(e) => e.stopPropagation()}
+      onChange={handleChange}
+      onBlur={handleBlur}
+      className={`bg-white text-black rounded-full px-2 ${widthClass} text-center font-bold text-xs outline-none ${errorClass}`}
+    />
+  );
+}
 
 export default function BlockItem({ block, index, spriteId, isChild = false }) {
   const { state, dispatch } = useScratch();
@@ -97,17 +164,13 @@ export default function BlockItem({ block, index, spriteId, isChild = false }) {
   if (isControl) colorClasses = "bg-yellow-500 text-black";
 
   const renderParamInput = (field, defaultValue, isWide = false) => (
-    <input
-      type="text"
-      disabled={isRunning}
-      value={p[field] ?? defaultValue}
-      onMouseDown={(e) => e.stopPropagation()}
-      onChange={(e) => handleParamChange(field, e.target.value)}
-      className={
-        isWide
-          ? "bg-white text-black rounded-full px-2 w-24 text-center font-bold text-xs"
-          : "bg-white text-black rounded-full px-2 w-14 text-center font-bold text-xs"
-      }
+    <ParamInput
+      field={field}
+      defaultValue={defaultValue}
+      value={p[field]}
+      isWide={isWide}
+      isRunning={isRunning}
+      onChangeParam={handleParamChange}
     />
   );
 
